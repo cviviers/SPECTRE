@@ -16,12 +16,28 @@ from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule
 
 def get_args_parser() -> argparse.ArgumentParser:
     """
-    Load arguments from config file. If argument is specified in command line, it will override the value in config file.
+    Load arguments from config file. If argument is specified in command line, 
+    it will override the value in config file.
     """
     parser = argparse.ArgumentParser(description="Pretrain DINO")
-    parser.add_argument("--config_file", type=str, default="configs/dino_default.yaml", help="path to config file")
-    parser.add_argument("opts", default=None, nargs=argparse.REMAINDER, help="command line arguments to override config file")
-    parser.add_argument("--output_dir", type=str, default="output", help="output directory to save checkpoints and logs")
+    parser.add_argument(
+        "--config_file",
+        type=str,
+        default="configs/dino_default.yaml",
+        help="path to config file",
+    )
+    parser.add_argument(
+        "opts",
+        default=None,
+        nargs=argparse.REMAINDER,
+        help="command line arguments to override config file",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="output",
+        help="output directory to save checkpoints and logs",
+    )
     return parser
 
 
@@ -46,7 +62,7 @@ def main(cfg):
                 "dir": cfg.train.output_dir / "logs",
             },
         )
-    
+
     # Get dataloader
     data_Loader = get_dataloader(
         cfg.train.dataset,
@@ -60,7 +76,10 @@ def main(cfg):
     )
 
     # Initialize backbone
-    if cfg.model.architecture in models.__dict__ and cfg.model.architecture.startswith("vit"):
+    if (
+        cfg.model.architecture in models.__dict__ 
+        and cfg.model.architecture.startswith("vit")
+    ):
         backbone = models.__dict__[cfg.model.architecture]()
         embed_dim = backbone.embed_dim
     else:
@@ -68,7 +87,7 @@ def main(cfg):
 
     # Initialize DINO model
     model = DINO(
-        backbone, 
+        backbone,
         input_dim=embed_dim,
         hidden_dim=cfg.model.hidden_dim,
         bottleneck_dim=cfg.model.bottleneck_dim,
@@ -93,7 +112,9 @@ def main(cfg):
 
     # calculate number of steps for training
     num_steps = cfg.optim.epochs * len(data_Loader) // accelerator.num_processes
-    num_warmup_steps = cfg.optim.warmup_epochs * len(data_Loader) // accelerator.num_processes
+    num_warmup_steps = (
+        cfg.optim.warmup_epochs * len(data_Loader) // accelerator.num_processes
+    )
 
     # Initialize learning rate scheduler
     lr_scheduler = CosineWarmupScheduler(
@@ -106,7 +127,10 @@ def main(cfg):
 
     # Prepare model, data, and optimizer for training
     model, data_Loader, optimizer, lr_scheduler = accelerator.prepare(
-        model, data_Loader, optimizer, lr_scheduler,
+        model,
+        data_Loader,
+        optimizer,
+        lr_scheduler,
     )
 
     # Start training
@@ -118,32 +142,44 @@ def main(cfg):
 
             # Update learning rate
             lr_scheduler.step()
-            
+
             # Update momentum
             momentum = cosine_schedule(
-                global_step, num_steps, cfg.model.momentum_teacher, cfg.model.momentum_teacher_end
+                global_step,
+                num_steps,
+                cfg.model.momentum_teacher,
+                cfg.model.momentum_teacher_end,
             )
             update_momentum(model.student_backbone, model.teacher_backbone, momentum)
             update_momentum(model.student_head, model.teacher_head, momentum)
 
             # Update weight decay
             weight_decay = cosine_schedule(
-                global_step, num_steps, cfg.optim.weight_decay, cfg.optim.weight_decay_end
+                global_step,
+                num_steps,
+                cfg.optim.weight_decay,
+                cfg.optim.weight_decay_end,
             )
             optimizer.param_groups[0]["weight_decay"] = weight_decay
-            
+
             # Forward pass
-            global_views = [batch["image"].view(-1, 2, *batch["image"].shape[2:])[:, i] for i in range(2)]
-            local_views = [batch["image_local"].view(-1, 8, *batch["image_local"].shape[2:])[:, i] for i in range(8)]
+            global_views = [
+                batch["image"].view(-1, 2, *batch["image"].shape[2:])[:, i]
+                for i in range(2)
+            ]
+            local_views = [
+                batch["image_local"].view(-1, 8, *batch["image_local"].shape[2:])[:, i]
+                for i in range(8)
+            ]
 
             teacher_outputs = [model.forward_teacher(view) for view in global_views]
             student_outputs = [model(view) for view in global_views + local_views]
 
             loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
-            
+
             # Backward pass
             accelerator.backward(loss)
-            
+
             # Update model
             if cfg.train.clip_grad_norm > 0:
                 accelerator.clip_grad_norm_(
@@ -156,11 +192,13 @@ def main(cfg):
             optimizer.step()
 
             global_step += 1
-        
+
         if (epoch + 1) % cfg.train.saveckp_freq == 0:
             accelerator.save_model(
-                model, 
-                os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt")
+                model,
+                os.path.join(
+                    cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"
+                ),
             )
 
 
@@ -169,4 +207,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = setup(args, default_config_dino)
     main(cfg)
-    
