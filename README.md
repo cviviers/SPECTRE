@@ -1,5 +1,5 @@
 # SPECTRE: Self-supervised Pretraining for CT Representation Extraction
-SPECTRE is a framework for training and evaluating **transformer-based foundation models for 3D CT scans**. By leveraging self-supervised learning, SPECTRE enables the extraction of rich and generalizable representations from medical imaging data, which can be fine-tuned for various downstream tasks such as segmentation, classification, and anomaly detection.
+SPECTRE is a framework for training and evaluating **transformer-based foundation models for 3D Computed Tomography (CT) scans**. By leveraging self-supervised learning, SPECTRE enables the extraction of rich and generalizable representations from medical imaging data, which can be fine-tuned for various downstream tasks such as segmentation, classification, and anomaly detection.
 
 This repository provides tools for pretraining, fine-tuning, and evaluating these models, ensuring robust performance across different CT datasets.
 
