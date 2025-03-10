@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.vision_transformer import VisionTransformer as VisionTransformerTimm
 
-from spectre.ssl.utils import to_3tuple
+from spectre.utils.utils import to_3tuple
 
 
 class PatchEmbed(nn.Module):
