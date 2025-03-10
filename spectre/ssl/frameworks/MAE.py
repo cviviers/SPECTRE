@@ -9,7 +9,7 @@ import torch.nn as nn
 
 from spectre.models import VisionTransformer
 from spectre.ssl.models import MaskedVisionTransformer, MAEDecoder
-from spectre.ssl.utils import (
+from spectre.utils.models import (
     repeat_token, 
     set_at_index, 
     get_at_index, 
