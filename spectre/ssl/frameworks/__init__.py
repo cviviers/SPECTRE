@@ -1,3 +1,3 @@
-from .dino_fw import DINO
-from .mae import MAE
-from .clip import CLIP
+from .contrastive import DINO
+from .generatiive import MAE
+from .vision_language import CLIP
