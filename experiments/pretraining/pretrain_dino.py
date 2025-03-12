@@ -132,6 +132,7 @@ def main(cfg):
         optimizer,
         lr_scheduler,
     )
+    unwrapped_model = accelerator.unwrap_model(model)
 
     # Start training
     global_step: int = 0
@@ -150,8 +151,8 @@ def main(cfg):
                 cfg.model.momentum_teacher,
                 cfg.model.momentum_teacher_end,
             )
-            update_momentum(model.student_backbone, model.teacher_backbone, momentum)
-            update_momentum(model.student_head, model.teacher_head, momentum)
+            update_momentum(unwrapped_model.student_backbone, unwrapped_model.teacher_backbone, momentum)
+            update_momentum(unwrapped_model.student_head, unwrapped_model.teacher_head, momentum)
 
             # Update weight decay
             weight_decay = cosine_schedule(
@@ -172,7 +173,7 @@ def main(cfg):
                 for i in range(8)
             ]
 
-            teacher_outputs = [model.forward_teacher(view) for view in global_views]
+            teacher_outputs = [unwrapped_model.forward_teacher(view) for view in global_views]
             student_outputs = [model(view) for view in global_views + local_views]
 
             loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
@@ -183,12 +184,12 @@ def main(cfg):
             # Update model
             if cfg.train.clip_grad_norm > 0:
                 accelerator.clip_grad_norm_(
-                    model.student_backbone.named_parameters(), cfg.train.clip_grad_norm
+                    unwrapped_model.student_backbone.named_parameters(), cfg.train.clip_grad_norm
                 )
                 accelerator.clip_grad_norm_(
-                    model.student_head.named_parameters(), cfg.train.clip_grad_norm
+                    unwrapped_model.student_head.named_parameters(), cfg.train.clip_grad_norm
                 )
-            model.student_head.cancel_last_layer_gradients(epoch)
+            unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
             optimizer.step()
 
             global_step += 1
