@@ -7,6 +7,7 @@ from accelerate import Accelerator
 import spectre.models as models
 from spectre.ssl.frameworks import DINO
 from spectre.ssl.losses import DINOLoss
+from spectre.ssl.transforms import DINOTransform
 from spectre.configs import default_config_dino
 from spectre.utils.config import setup
 from spectre.utils.models import update_momentum
@@ -69,6 +70,7 @@ def main(cfg):
         cfg.train.dataset_path,
         include_reports=False,
         cache_dataset=cfg.train.cache_dataset,
+        transform=DINOTransform(),
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
         pin_memory=True,
