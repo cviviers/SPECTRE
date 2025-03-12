@@ -33,34 +33,6 @@ def get_dataloader(
                 transform=transform,
             )
 
-    elif dataset == "nlst":
-        if not cache_dataset:
-            from spectre.data import NLSTDataset
-            dataset = NLSTDataset(
-                dataset_path,
-                transform=transform,
-            )
-        else:
-            from spectre.data import NLSTCacheDataset
-            dataset = NLSTCacheDataset(
-                dataset_path,
-                transform=transform,
-            )
-
-    elif dataset == "nlst+ct_rate":
-        if not cache_dataset:
-            from spectre.data import NLSTCTRateDataset
-            dataset = NLSTCTRateDataset(
-                dataset_path,
-                transform=transform,
-            )
-        else:
-            from spectre.data import NLSTCTRateCacheDataset
-            dataset = NLSTCTRateCacheDataset(
-                dataset_path,
-                transform=transform,
-            )
-
     else:
         raise NotImplementedError(f"Dataset {dataset} not implemented.")
     

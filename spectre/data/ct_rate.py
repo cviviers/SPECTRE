@@ -12,8 +12,7 @@ class CTRateDataset(Dataset):
         include_reports: bool = False, 
         transform: Callable = None
     ):
-        series_folders = Path(dataset_path).glob(os.path.join("dataset", "train", "*", "*"))
-        reconstruction_paths_per_series = [image.glob("*.nii.gz") for image in series_folders]
+        image_paths = Path(dataset_path).glob(os.path.join("dataset", "train", "*", "*", "*.nii.gz"))
 
         if include_reports:
             import pandas as pd
@@ -22,11 +21,11 @@ class CTRateDataset(Dataset):
             ))
 
             data = [{
-                "image": [str(image) for image in series],
-                "report": reports[reports["VolumeName"] == series[0].name]["Findings_EN"].values[0]
-            } for series in reconstruction_paths_per_series]
+                "image": str(image_path),
+                "report": reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0]
+            } for image_path in image_paths]
         else:
-            data = [{"image": [str(image) for image in series]} for series in reconstruction_paths_per_series]
+            data = [{"image": str(image_path)} for image_path in image_paths]
 
         super().__init__(data=data, transform=transform)
 
@@ -38,8 +37,7 @@ class CTRateCacheDataset(CacheDataset):
         include_reports: bool = False, 
         transform: Callable = None
     ):
-        series_folders = Path(dataset_path).glob(os.path.join("dataset", "train", "*", "*"))
-        reconstruction_paths_per_series = [image.glob("*.nii.gz") for image in series_folders]
+        image_paths = Path(dataset_path).glob(os.path.join("dataset", "train", "*", "*", "*.nii.gz"))
 
         if include_reports:
             import pandas as pd
@@ -48,10 +46,10 @@ class CTRateCacheDataset(CacheDataset):
             ))
 
             data = [{
-                "image": [str(image) for image in series],
-                "report": reports[reports["VolumeName"] == series[0].name]["Findings_EN"].values[0]
-            } for series in reconstruction_paths_per_series]
+                "image": str(image_path),
+                "report": reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0]
+            } for image_path in image_paths]
         else:
-            data = [{"image": [str(image) for image in series]} for series in reconstruction_paths_per_series]
+            data = [{"image": str(image_path)} for image_path in image_paths]
 
         super().__init__(data=data, transform=transform)
