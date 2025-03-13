@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from spectre.utils.utils import to_3tuple
+from spectre.utils.models import resample_patch_embed
 
 
 class PatchEmbed(nn.Module):
@@ -27,14 +28,7 @@ class PatchEmbed(nn.Module):
     ):
         super().__init__()
         self.patch_size = to_3tuple(patch_size)
-        if img_size is not None:
-            self.img_size = to_3tuple(img_size)
-            self.grid_size = tuple([s // p for s, p in zip(self.img_size, self.patch_size)])
-            self.num_patches = math.prod(self.grid_size)
-        else:
-            self.img_size = None
-            self.grid_size = None
-            self.num_patches = None
+        self.img_size, self.grid_size, self.num_patches = self._init_img_size(img_size)
 
         self.flatten = flatten
         self.strict_img_size = strict_img_size
@@ -42,6 +36,64 @@ class PatchEmbed(nn.Module):
 
         self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias)
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
+    
+    def _init_img_size(self, img_size: Union[int, Tuple[int, int, int]]):
+        assert self.patch_size
+        if img_size is None:
+            return None, None, None
+        img_size = to_3tuple(img_size)
+        grid_size = tuple([s // p for s, p in zip(img_size, self.patch_size)])
+        num_patches = grid_size[0] * grid_size[1] * grid_size[2]
+        return img_size, grid_size, num_patches
+    
+    def set_input_size(
+            self,
+            img_size: Optional[Union[int, Tuple[int, int, int]]] = None,
+            patch_size: Optional[Union[int, Tuple[int, int, int]]] = None,
+    ):
+        new_patch_size = None
+        if patch_size is not None:
+            new_patch_size = to_3tuple(patch_size)
+        if new_patch_size is not None and new_patch_size != self.patch_size:
+            with torch.no_grad():
+                new_proj = nn.Conv3d(
+                    self.proj.in_channels,
+                    self.proj.out_channels,
+                    kernel_size=new_patch_size,
+                    stride=new_patch_size,
+                    bias=self.proj.bias is not None,
+                )
+                new_proj.weight.copy_(resample_patch_embed(self.proj.weight, new_patch_size, verbose=True))
+                if self.proj.bias is not None:
+                    new_proj.bias.copy_(self.proj.bias)
+                self.proj = new_proj
+            self.patch_size = new_patch_size
+        img_size = img_size or self.img_size
+        if img_size != self.img_size or new_patch_size is not None:
+            self.img_size, self.grid_size, self.num_patches = self._init_img_size(img_size)
+    
+    def feat_ratio(self, as_scalar=True) -> Union[Tuple[int, int, int], int]:
+        if as_scalar:
+            return max(self.patch_size)
+        else:
+            return self.patch_size
+        
+    def dynamic_feat_size(self, img_size: Tuple[int, int, int]) -> Tuple[int, int, int]:
+        """ Get grid (feature) size for given image size taking account of dynamic padding.
+        NOTE: must be torchscript compatible so using fixed tuple indexing
+        """
+        if self.dynamic_img_pad:
+            return (
+                math.ceil(img_size[0] / self.patch_size[0]), 
+                math.ceil(img_size[1] / self.patch_size[1]),
+                math.ceil(img_size[2] / self.patch_size[2]),
+            )
+        else:
+            return (
+                img_size[0] // self.patch_size[0], 
+                img_size[1] // self.patch_size[1],
+                img_size[2] // self.patch_size[2],
+            )
 
     def forward(self, x):
         _, _, H, W, D = x.shape
