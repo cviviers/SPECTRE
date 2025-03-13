@@ -1,10 +1,12 @@
 import os
 import argparse
+from functools import partial
 
 from torch.optim import AdamW
 from accelerate import Accelerator
 
 import spectre.models as models
+from spectre.models.layers import PatchEmbed
 from spectre.ssl.frameworks import DINO
 from spectre.ssl.losses import DINOLoss
 from spectre.ssl.transforms import DINOTransform
@@ -83,7 +85,9 @@ def main(cfg):
         cfg.model.architecture in models.__dict__ 
         and cfg.model.architecture.startswith("vit")
     ):
-        backbone = models.__dict__[cfg.model.architecture]()
+        backbone = models.__dict__[cfg.model.architecture](
+            embed_layer=partial(PatchEmbed, strict_img_size=False),
+        )
         embed_dim = backbone.embed_dim
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
@@ -192,10 +196,11 @@ def main(cfg):
                     "loss": loss.item(),
                     "lr": lr_scheduler.get_last_lr()[0],
                     "weight_decay": weight_decay,
-                }
+                },
+                step=global_step,
             )
 
-
+            # Update global step
             global_step += 1
 
         if (epoch + 1) % cfg.train.saveckp_freq == 0:
