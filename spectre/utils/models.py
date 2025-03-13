@@ -232,22 +232,18 @@ def random_token_mask(
 
 
 def resample_abs_pos_embed(
-        posemb,
-        new_size: List[int],
-        old_size: Optional[List[int]] = None,
+        posemb: torch.Tensor,
+        new_size: List[int, int, int],
+        old_size: List[int, int, int],
         num_prefix_tokens: int = 1,
         interpolation: str = 'bicubic',
         antialias: bool = True,
 ):
     # sort out sizes, assume square if old size not provided
     num_pos_tokens = posemb.shape[1]
-    num_new_tokens = math.prod(new_size) + num_prefix_tokens
+    num_new_tokens = new_size[0] * new_size[1] * new_size[2] + num_prefix_tokens
     if num_new_tokens == num_pos_tokens and new_size[0] == new_size[1]:
         return posemb
-
-    if old_size is None:
-        hw = int(math.pow(num_pos_tokens - num_prefix_tokens, 1/3))
-        old_size = hw, hw, hw
 
     if num_prefix_tokens:
         posemb_prefix, posemb = posemb[:, :num_prefix_tokens], posemb[:, num_prefix_tokens:]
@@ -258,7 +254,7 @@ def resample_abs_pos_embed(
     embed_dim = posemb.shape[-1]
     orig_dtype = posemb.dtype
     posemb = posemb.float()  # interpolate needs float32
-    posemb = posemb.reshape(1, *old_size, -1).permute(0, 4, 1, 2, 3)
+    posemb = posemb.reshape(1, old_size[0], old_size[1], old_size[2], -1).permute(0, 4, 1, 2, 3)
     posemb = F.interpolate(posemb, size=new_size, mode=interpolation, antialias=antialias)
     posemb = posemb.permute(0, 2, 3, 4, 1).reshape(1, -1, embed_dim)
     posemb = posemb.to(orig_dtype)
@@ -270,33 +266,19 @@ def resample_abs_pos_embed(
     return posemb
 
 
-def resample_abs_pos_embed_nhwc(
-        posemb,
-        new_size: List[int],
+def resample_abs_pos_embed_nhwdc(
+        posemb: torch.Tensor,
+        new_size: List[int, int, int],
         interpolation: str = 'bicubic',
         antialias: bool = True,
 ):
-    if (
-        new_size[0] == posemb.shape[-4] 
-        and new_size[1] == posemb.shape[-3]
-        and new_size[2] == posemb.shape[-2]
-    ):
+    if new_size[0] == posemb.shape[-4] and new_size[1] == posemb.shape[-3] and new_size[2] == posemb.shape[-2]:
         return posemb
 
     orig_dtype = posemb.dtype
     posemb = posemb.float()
-    # do the interpolation
-    posemb = posemb.reshape(
-        1, 
-        posemb.shape[-4],
-        posemb.shape[-3], 
-        posemb.shape[-2], 
-        posemb.shape[-1]
-    ).permute(0, 4, 1, 2, 3)
+    posemb = posemb.reshape(1, posemb.shape[-4], posemb.shape[-3], posemb.shape[-2], posemb.shape[-1]).permute(0, 4, 1, 2, 3)
     posemb = F.interpolate(posemb, size=new_size, mode=interpolation, antialias=antialias)
     posemb = posemb.permute(0, 2, 3, 4, 1).to(orig_dtype)
 
     return posemb
-
-
-from lightly.models.modules import MAEDecoderTIMM, MaskedVisionTransformerTIMM
