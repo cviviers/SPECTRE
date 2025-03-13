@@ -1,12 +1,10 @@
 import os
 import argparse
-from functools import partial
 
 from torch.optim import AdamW
 from accelerate import Accelerator
 
 import spectre.models as models
-from spectre.models.layers import PatchEmbed
 from spectre.ssl.frameworks import DINO
 from spectre.ssl.losses import DINOLoss
 from spectre.ssl.transforms import DINOTransform
