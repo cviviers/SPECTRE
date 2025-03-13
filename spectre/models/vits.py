@@ -419,7 +419,7 @@ class VisionTransformer(nn.Module):
 class FeatureVisionTransformer(nn.Module):
     def __init__(
         self,
-        patch_dim: int,
+        patch_dim: int = 768,
         embed_dim: int = 768,
         num_patches: int = 36,
         depth: int = 4,
