@@ -186,6 +186,16 @@ def main(cfg):
             unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
             optimizer.step()
 
+            # Log loss, lr, and weight decay
+            accelerator.log(
+                {
+                    "loss": loss.item(),
+                    "lr": lr_scheduler.get_last_lr()[0],
+                    "weight_decay": weight_decay,
+                }
+            )
+
+
             global_step += 1
 
         if (epoch + 1) % cfg.train.saveckp_freq == 0:
