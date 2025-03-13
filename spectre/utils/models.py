@@ -233,8 +233,8 @@ def random_token_mask(
 
 def resample_abs_pos_embed(
         posemb: torch.Tensor,
-        new_size: List[int, int, int],
-        old_size: List[int, int, int],
+        new_size: List[int],
+        old_size: List[int],
         num_prefix_tokens: int = 1,
         interpolation: str = 'bicubic',
         antialias: bool = True,
@@ -268,7 +268,7 @@ def resample_abs_pos_embed(
 
 def resample_abs_pos_embed_nhwdc(
         posemb: torch.Tensor,
-        new_size: List[int, int, int],
+        new_size: List[int],
         interpolation: str = 'bicubic',
         antialias: bool = True,
 ):
@@ -286,7 +286,7 @@ def resample_abs_pos_embed_nhwdc(
 
 def resample_patch_embed(
         patch_embed,
-        new_size: List[int, int, int],
+        new_size: List[int],
         interpolation: str = 'trilinear',
         antialias: bool = True,
 ):
