@@ -181,10 +181,10 @@ def main(cfg):
             # Update model
             if cfg.optim.clip_grad_norm > 0:
                 accelerator.clip_grad_norm_(
-                    unwrapped_model.student_backbone.named_parameters(), cfg.optim.clip_grad_norm
+                    list(unwrapped_model.student_backbone.named_parameters()), cfg.optim.clip_grad_norm
                 )
                 accelerator.clip_grad_norm_(
-                    unwrapped_model.student_head.named_parameters(), cfg.optim.clip_grad_norm
+                    list(unwrapped_model.student_head.named_parameters()), cfg.optim.clip_grad_norm
                 )
             unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
             optimizer.step()
