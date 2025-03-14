@@ -1,5 +1,6 @@
 import os
 import argparse
+from itertools import chain
 
 from torch.optim import AdamW
 from accelerate import Accelerator
@@ -7,6 +8,7 @@ from accelerate import Accelerator
 import spectre.models as models
 from spectre.ssl.frameworks import DINO
 from spectre.ssl.losses import DINOLoss
+from spectre.ssl.transforms import DINOTransform
 from spectre.configs import default_config_dino
 from spectre.utils.config import setup
 from spectre.utils.models import update_momentum
@@ -45,21 +47,22 @@ def main(cfg):
     """
     Main function to run pretraining.
     """
-    print(cfg)
-
     # Initialize accelerator
     accelerator = Accelerator(
         log_with="wandb" if cfg.train.log_wandb else None,
     )
 
+    # Print config
+    accelerator.print(cfg)
+
     # Initialize wandb
     if cfg.train.log_wandb:
         accelerator.init_trackers(
             project_name="spectre",
-            config=vars(cfg),
+            # config=vars(cfg),
             init_kwargs={
                 "name": "dino-pretrain-" + cfg.model.architecture,
-                "dir": cfg.train.output_dir / "logs",
+                "dir": os.path.join(cfg.train.output_dir, "logs"),
             },
         )
 
@@ -69,6 +72,8 @@ def main(cfg):
         cfg.train.dataset_path,
         include_reports=False,
         cache_dataset=cfg.train.cache_dataset,
+        cache_dir=cfg.train.cache_dir,
+        transform=DINOTransform(),
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
         pin_memory=True,
@@ -80,7 +85,10 @@ def main(cfg):
         cfg.model.architecture in models.__dict__ 
         and cfg.model.architecture.startswith("vit")
     ):
-        backbone = models.__dict__[cfg.model.architecture]()
+        backbone = models.__dict__[cfg.model.architecture](
+            num_classes=0,
+            dynamic_img_size=True,
+        )
         embed_dim = backbone.embed_dim
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
@@ -97,17 +105,17 @@ def main(cfg):
     # Initialize criterion
     criterion = DINOLoss(
         output_dim=cfg.model.output_dim,
-        warmup_teacher_temp=cfg.loss.warmup_teacher_temp,
-        teacher_temp=cfg.loss.teacher_temp,
-        warmup_teacher_temp_epochs=cfg.loss.warmup_teacher_temp_epochs,
-        student_temp=cfg.loss.student_temp,
-        center_momentum=cfg.loss.center_momentum,
+        warmup_teacher_temp=cfg.model.warmup_teacher_temp,
+        teacher_temp=cfg.model.teacher_temp,
+        warmup_teacher_temp_epochs=cfg.model.warmup_teacher_temp_epochs,
+        student_temp=cfg.model.student_temp,
+        center_momentum=cfg.model.center_momentum,
     )
 
     # Initialize optimizer
     optimizer = AdamW(
         model.parameters(),
-        lr=cfg.train.lr,
+        lr=cfg.optim.lr,
     )
 
     # calculate number of steps for training
@@ -126,18 +134,21 @@ def main(cfg):
     )
 
     # Prepare model, data, and optimizer for training
-    model, data_Loader, optimizer, lr_scheduler = accelerator.prepare(
+    model, data_Loader, criterion, optimizer, lr_scheduler = accelerator.prepare(
         model,
         data_Loader,
+        criterion,
         optimizer,
         lr_scheduler,
     )
+    unwrapped_model = accelerator.unwrap_model(model)
 
     # Start training
     global_step: int = 0
     for epoch in range(cfg.optim.epochs):
         model.train()
         for batch in data_Loader:
+
             optimizer.zero_grad()
 
             # Update learning rate
@@ -150,8 +161,8 @@ def main(cfg):
                 cfg.model.momentum_teacher,
                 cfg.model.momentum_teacher_end,
             )
-            update_momentum(model.student_backbone, model.teacher_backbone, momentum)
-            update_momentum(model.student_head, model.teacher_head, momentum)
+            update_momentum(unwrapped_model.student_backbone, unwrapped_model.teacher_backbone, momentum)
+            update_momentum(unwrapped_model.student_head, unwrapped_model.teacher_head, momentum)
 
             # Update weight decay
             weight_decay = cosine_schedule(
@@ -163,17 +174,8 @@ def main(cfg):
             optimizer.param_groups[0]["weight_decay"] = weight_decay
 
             # Forward pass
-            global_views = [
-                batch["image"].view(-1, 2, *batch["image"].shape[2:])[:, i]
-                for i in range(2)
-            ]
-            local_views = [
-                batch["image_local"].view(-1, 8, *batch["image_local"].shape[2:])[:, i]
-                for i in range(8)
-            ]
-
-            teacher_outputs = [model.forward_teacher(view) for view in global_views]
-            student_outputs = [model(view) for view in global_views + local_views]
+            teacher_outputs = [unwrapped_model.forward_teacher(view) for view in batch["global_crops"]]
+            student_outputs = [model(view) for view in batch["global_crops"] + batch["local_crops"]]
 
             loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
 
@@ -181,16 +183,30 @@ def main(cfg):
             accelerator.backward(loss)
 
             # Update model
-            if cfg.train.clip_grad_norm > 0:
+            if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
                 accelerator.clip_grad_norm_(
-                    model.student_backbone.named_parameters(), cfg.train.clip_grad_norm
+                    chain(
+                        unwrapped_model.student_backbone.parameters(), 
+                        unwrapped_model.student_head.parameters(),
+                    ),
+                    cfg.optim.clip_grad_norm
                 )
-                accelerator.clip_grad_norm_(
-                    model.student_head.named_parameters(), cfg.train.clip_grad_norm
-                )
-            model.student_head.cancel_last_layer_gradients(epoch)
+
+            unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
             optimizer.step()
 
+            # Log loss, lr, and weight decay
+            accelerator.log(
+                {
+                    "loss": loss.item(),
+                    "lr": lr_scheduler.get_last_lr()[0],
+                    "weight_decay": weight_decay,
+                    "momentum": momentum,
+                },
+                step=global_step,
+            )
+
+            # Update global step
             global_step += 1
 
         if (epoch + 1) % cfg.train.saveckp_freq == 0:

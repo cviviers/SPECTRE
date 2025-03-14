@@ -5,9 +5,10 @@ from monai.data import DataLoader
 
 def get_dataloader(
     dataset: str,
-    dataset_path: str,
+    data_dir: str,
     include_reports: bool = False,
     cache_dataset: bool = False,
+    cache_dir: Optional[str] = None,
     transform: Optional[Callable] = None,
     batch_size: int = 64,
     num_workers: int = 4,
@@ -21,43 +22,16 @@ def get_dataloader(
         if not cache_dataset:
             from spectre.data import CTRateDataset
             dataset = CTRateDataset(
-                dataset_path, 
+                data_dir, 
                 include_reports=include_reports,
                 transform=transform,
             )
         else:
             from spectre.data import CTRateCacheDataset
             dataset = CTRateCacheDataset(
-                dataset_path, 
+                data_dir,
+                cache_dir,
                 include_reports=include_reports,
-                transform=transform,
-            )
-
-    elif dataset == "nlst":
-        if not cache_dataset:
-            from spectre.data import NLSTDataset
-            dataset = NLSTDataset(
-                dataset_path,
-                transform=transform,
-            )
-        else:
-            from spectre.data import NLSTCacheDataset
-            dataset = NLSTCacheDataset(
-                dataset_path,
-                transform=transform,
-            )
-
-    elif dataset == "nlst+ct_rate":
-        if not cache_dataset:
-            from spectre.data import NLSTCTRateDataset
-            dataset = NLSTCTRateDataset(
-                dataset_path,
-                transform=transform,
-            )
-        else:
-            from spectre.data import NLSTCTRateCacheDataset
-            dataset = NLSTCTRateCacheDataset(
-                dataset_path,
                 transform=transform,
             )
 

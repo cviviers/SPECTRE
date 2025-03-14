@@ -1,4 +1,5 @@
 import math
+from enum import Enum
 from typing import List, Tuple, Optional, Union
 
 import torch
@@ -125,6 +126,29 @@ def set_at_index(
     return torch.scatter(tokens, 1, index, value)
 
 
+def mask_at_index(
+    tokens: torch.Tensor, index: torch.Tensor, mask_token: torch.Tensor
+) -> torch.Tensor:
+    """Copies mask token into the input tensor at the given indices.
+
+    Args:
+        tokens:
+            Tokens tensor with shape (batch_size, sequence_length, dim).
+        index:
+            Index tensor with shape (batch_size, index_length).
+        mask_token:
+            Value tensor with shape (1, 1, dim).
+
+    Returns:
+        Tokens tensor with shape (batch_size, sequence_length, dim) containing
+        the new values.
+
+    """
+    mask = tokens.new_zeros(tokens.shape)
+    mask = set_at_index(mask, index, 1)
+    return (1 - mask) * tokens + mask * mask_token
+
+
 def patchify(images: torch.Tensor, patch_size: Tuple[int, int, int]) -> torch.Tensor:
     """Converts a batch of input images into patches.
 
@@ -209,22 +233,17 @@ def random_token_mask(
 
 
 def resample_abs_pos_embed(
-        posemb,
+        posemb: torch.Tensor,
         new_size: List[int],
-        old_size: Optional[List[int]] = None,
+        old_size: List[int],
         num_prefix_tokens: int = 1,
-        interpolation: str = 'bicubic',
-        antialias: bool = True,
+        interpolation: str = 'trilinear',
 ):
     # sort out sizes, assume square if old size not provided
     num_pos_tokens = posemb.shape[1]
-    num_new_tokens = math.prod(new_size) + num_prefix_tokens
+    num_new_tokens = new_size[0] * new_size[1] * new_size[2] + num_prefix_tokens
     if num_new_tokens == num_pos_tokens and new_size[0] == new_size[1]:
         return posemb
-
-    if old_size is None:
-        hw = int(math.pow(num_pos_tokens - num_prefix_tokens, 1/3))
-        old_size = hw, hw, hw
 
     if num_prefix_tokens:
         posemb_prefix, posemb = posemb[:, :num_prefix_tokens], posemb[:, num_prefix_tokens:]
@@ -235,8 +254,8 @@ def resample_abs_pos_embed(
     embed_dim = posemb.shape[-1]
     orig_dtype = posemb.dtype
     posemb = posemb.float()  # interpolate needs float32
-    posemb = posemb.reshape(1, *old_size, -1).permute(0, 4, 1, 2, 3)
-    posemb = F.interpolate(posemb, size=new_size, mode=interpolation, antialias=antialias)
+    posemb = posemb.reshape(1, old_size[0], old_size[1], old_size[2], -1).permute(0, 4, 1, 2, 3)
+    posemb = F.interpolate(posemb, size=new_size, mode=interpolation)
     posemb = posemb.permute(0, 2, 3, 4, 1).reshape(1, -1, embed_dim)
     posemb = posemb.to(orig_dtype)
 
@@ -247,30 +266,174 @@ def resample_abs_pos_embed(
     return posemb
 
 
-def resample_abs_pos_embed_nhwc(
-        posemb,
+def resample_abs_pos_embed_nhwdc(
+        posemb: torch.Tensor,
         new_size: List[int],
-        interpolation: str = 'bicubic',
-        antialias: bool = True,
+        interpolation: str = 'trilinear',
 ):
-    if (
-        new_size[0] == posemb.shape[-4] 
-        and new_size[1] == posemb.shape[-3]
-        and new_size[2] == posemb.shape[-2]
-    ):
+    if new_size[0] == posemb.shape[-4] and new_size[1] == posemb.shape[-3] and new_size[2] == posemb.shape[-2]:
         return posemb
 
     orig_dtype = posemb.dtype
     posemb = posemb.float()
-    # do the interpolation
-    posemb = posemb.reshape(
-        1, 
-        posemb.shape[-4],
-        posemb.shape[-3], 
-        posemb.shape[-2], 
-        posemb.shape[-1]
-    ).permute(0, 4, 1, 2, 3)
-    posemb = F.interpolate(posemb, size=new_size, mode=interpolation, antialias=antialias)
+    posemb = posemb.reshape(1, posemb.shape[-4], posemb.shape[-3], posemb.shape[-2], posemb.shape[-1]).permute(0, 4, 1, 2, 3)
+    posemb = F.interpolate(posemb, size=new_size, mode=interpolation)
     posemb = posemb.permute(0, 2, 3, 4, 1).to(orig_dtype)
 
     return posemb
+
+
+def resample_patch_embed(
+        patch_embed,
+        new_size: List[int],
+        interpolation: str = 'trilinear',
+):
+    """Resample the weights of the patch embedding kernel to target resolution.
+    We resample the patch embedding kernel by approximately inverting the effect
+    of patch resizing.
+
+    Code based on:
+      https://github.com/google-research/big_vision/blob/b00544b81f8694488d5f36295aeb7972f3755ffe/big_vision/models/proj/flexi/vit.py
+
+    With this resizing, we can for example load a B/8 filter into a B/16 model
+    and, on 2x larger input image, the result will match.
+
+    Args:
+        patch_embed: original parameter to be resized.
+        new_size (tuple[int, int, int]): target shape (depth, height, width).
+        interpolation (str): interpolation for resize
+    Returns:
+        Resized patch embedding kernel.
+    """
+    import numpy as np
+    try:
+        from torch import vmap
+    except ImportError:
+        from functorch import vmap
+
+    assert len(patch_embed.shape) == 5, "Five dimensions expected"
+    assert len(new_size) == 3, "New shape should only be (height, width, depth)"
+    old_size = patch_embed.shape[-3:]
+    if tuple(old_size) == tuple(new_size):
+        return patch_embed
+
+    def resize(x_np, _new_size):
+        x_tf = torch.Tensor(x_np)[None, None, ...]
+        x_upsampled = F.interpolate(
+            x_tf, size=_new_size, mode=interpolation)[0, 0, ...].numpy()
+        return x_upsampled
+
+    def get_resize_mat(_old_size, _new_size):
+        mat = []
+        for i in range(np.prod(_old_size)):
+            basis_vec = np.zeros(_old_size)
+            basis_vec[np.unravel_index(i, _old_size)] = 1.
+            mat.append(resize(basis_vec, _new_size).reshape(-1))
+        return np.stack(mat).T
+
+    resize_mat = get_resize_mat(old_size, new_size)
+    resize_mat_pinv = torch.tensor(np.linalg.pinv(resize_mat.T), device=patch_embed.device)
+
+    def resample_kernel(kernel):
+        resampled_kernel = resize_mat_pinv @ kernel.reshape(-1)
+        return resampled_kernel.reshape(new_size)
+
+    v_resample_kernel = vmap(vmap(resample_kernel, 0, 0), 1, 1)
+    orig_dtype = patch_embed.dtype
+    patch_embed = patch_embed.float()
+    patch_embed = v_resample_kernel(patch_embed)
+    patch_embed = patch_embed.to(orig_dtype)
+    return patch_embed
+
+
+def feature_take_indices(
+        num_features: int,
+        indices: Optional[Union[int, List[int]]] = None,
+        as_set: bool = False,
+) -> Tuple[List[int], int]:
+    """ Determine the absolute feature indices to 'take' from.
+
+    Note: This function can be called in forward() so must be torchscript compatible,
+    which requires some incomplete typing and workaround hacks.
+
+    Args:
+        num_features: total number of features to select from
+        indices: indices to select,
+          None -> select all
+          int -> select last n
+          list/tuple of int -> return specified (-ve indices specify from end)
+        as_set: return as a set
+
+    Returns:
+        List (or set) of absolute (from beginning) indices, Maximum index
+    """
+    if indices is None:
+        indices = num_features  # all features if None
+
+    if isinstance(indices, int):
+        # convert int -> last n indices
+        assert 0 < indices <= num_features, f'last-n ({indices}) is out of range (1 to {num_features})'
+        take_indices = [num_features - indices + i for i in range(indices)]
+    else:
+        take_indices: List[int] = []
+        for i in indices:
+            idx = num_features + i if i < 0 else i
+            assert 0 <= idx < num_features, f'feature index {idx} is out of range (0 to {num_features - 1})'
+            take_indices.append(idx)
+
+    if not torch.jit.is_scripting() and as_set:
+        return set(take_indices), max(take_indices)
+
+    return take_indices, max(take_indices)
+
+
+def global_pool_nlc(
+        x: torch.Tensor,
+        pool_type: str = 'token',
+        num_prefix_tokens: int = 1,
+        reduce_include_prefix: bool = False,
+):
+    if not pool_type:
+        return x
+
+    if pool_type == 'token':
+        x = x[:, 0]  # class token
+    else:
+        x = x if reduce_include_prefix else x[:, num_prefix_tokens:]
+        if pool_type == 'avg':
+            x = x.mean(dim=1)
+        elif pool_type == 'avgmax':
+            x = 0.5 * (x.amax(dim=1) + x.mean(dim=1))
+        elif pool_type == 'max':
+            x = x.amax(dim=1)
+        else:
+            assert not pool_type, f'Unknown pool type {pool_type}'
+
+    return x
+
+
+class Format(str, Enum):
+    NCHWD = 'NCHWD'
+    NHWDC = 'NHWDC'
+    NCL = 'NCL'
+    NLC = 'NLC'
+
+
+def nchwd_to(x: torch.Tensor, fmt: Format):
+    if fmt == Format.NHWDC:
+        x = x.permute(0, 2, 3, 4, 1)
+    elif fmt == Format.NLC:
+        x = x.flatten(2).transpose(1, 2)
+    elif fmt == Format.NCL:
+        x = x.flatten(2)
+    return x
+
+
+def nhwdc_to(x: torch.Tensor, fmt: Format):
+    if fmt == Format.NCHWD:
+        x = x.permute(0, 4, 1, 2, 3)
+    elif fmt == Format.NLC:
+        x = x.flatten(1, 2)
+    elif fmt == Format.NCL:
+        x = x.flatten(1, 2).transpose(1, 2)
+    return x
