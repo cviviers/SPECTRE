@@ -129,3 +129,15 @@ class PatchEmbed(nn.Module):
             x = nchwd_to(x, self.output_fmt)
         x = self.norm(x)
         return x
+    
+class RotaryEmbedding(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        inv_freq = 1. / (10000 ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer('inv_freq', inv_freq)
+
+    def forward(self, seq_len, device):
+        inv_freq = self.inv_freq
+        t = torch.arange(seq_len, device = device).type_as(inv_freq)
+        freqs = torch.einsum('i , j -> i j', t, inv_freq)
+        return torch.cat((freqs, freqs), dim = -1)
