@@ -148,13 +148,6 @@ def main(cfg):
         model.train()
         for batch in data_Loader:
 
-            print(batch.keys())
-            print(type(batch["image"]))
-            print(batch["image"].shape)
-            print(type(batch["global_crops"]))
-            print(len(batch["global_crops"]))
-            print(batch["global_crops"][0].shape)
-            
             optimizer.zero_grad()
 
             # Update learning rate
