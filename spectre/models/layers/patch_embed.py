@@ -6,12 +6,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from spectre.utils.utils import to_3tuple
-from spectre.utils.models import resample_patch_embed
+from spectre.utils.models import resample_patch_embed, Format, nchwd_to
 
 
 class PatchEmbed(nn.Module):
     """ 3D Image to Patch Embedding
     """
+    output_fmt: Format
     dynamic_img_pad: torch.jit.Final[bool]
 
     def __init__(
@@ -22,6 +23,7 @@ class PatchEmbed(nn.Module):
             embed_dim: int = 768,
             norm_layer: Optional[Callable] = None,
             flatten: bool = True,
+            output_fmt: Optional[str] = None,
             bias: bool = True,
             strict_img_size: bool = True,
             dynamic_img_pad: bool = False,
@@ -30,7 +32,13 @@ class PatchEmbed(nn.Module):
         self.patch_size = to_3tuple(patch_size)
         self.img_size, self.grid_size, self.num_patches = self._init_img_size(img_size)
 
-        self.flatten = flatten
+        if output_fmt is not None:
+            self.flatten = False
+            self.output_fmt = Format(output_fmt)
+        else:
+            # flatten spatial dim and transpose to channels last, kept for bwd compat
+            self.flatten = flatten
+            self.output_fmt = Format.NCHWD
         self.strict_img_size = strict_img_size
         self.dynamic_img_pad = dynamic_img_pad
 
@@ -117,5 +125,7 @@ class PatchEmbed(nn.Module):
         x = self.proj(x)
         if self.flatten:
             x = x.flatten(2).transpose(1, 2)  # NCHWD -> NLC
+        elif self.output_fmt != Format.NCHWD:
+            x = nchwd_to(x, self.output_fmt)
         x = self.norm(x)
         return x

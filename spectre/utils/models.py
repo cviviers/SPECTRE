@@ -1,4 +1,5 @@
 import math
+from enum import Enum
 from typing import List, Tuple, Optional, Union
 
 import torch
@@ -412,4 +413,31 @@ def global_pool_nlc(
         else:
             assert not pool_type, f'Unknown pool type {pool_type}'
 
+    return x
+
+
+class Format(str, Enum):
+    NCHWD = 'NCHWD'
+    NHWDC = 'NHWDC'
+    NCL = 'NCL'
+    NLC = 'NLC'
+
+
+def nchwd_to(x: torch.Tensor, fmt: Format):
+    if fmt == Format.NHWDC:
+        x = x.permute(0, 2, 3, 4, 1)
+    elif fmt == Format.NLC:
+        x = x.flatten(2).transpose(1, 2)
+    elif fmt == Format.NCL:
+        x = x.flatten(2)
+    return x
+
+
+def nhwdc_to(x: torch.Tensor, fmt: Format):
+    if fmt == Format.NCHWD:
+        x = x.permute(0, 4, 1, 2, 3)
+    elif fmt == Format.NLC:
+        x = x.flatten(1, 2)
+    elif fmt == Format.NCL:
+        x = x.flatten(1, 2).transpose(1, 2)
     return x

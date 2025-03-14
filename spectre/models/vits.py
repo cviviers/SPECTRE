@@ -104,7 +104,7 @@ class VisionTransformer(nn.Module):
         embed_args = {}
         if dynamic_img_size:
             # flatten deferred until after pos embed
-            embed_args["strict_img_size"] = False
+            embed_args.update(dict(strict_img_size=False, output_fmt="NHWDC"))
         if embed_norm_layer is not None:
             embed_args['norm_layer'] = embed_norm_layer
         self.patch_embed = embed_layer(
