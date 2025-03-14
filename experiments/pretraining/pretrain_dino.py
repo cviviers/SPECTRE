@@ -131,9 +131,10 @@ def main(cfg):
     )
 
     # Prepare model, data, and optimizer for training
-    model, data_Loader, optimizer, lr_scheduler = accelerator.prepare(
+    model, data_Loader, criterion, optimizer, lr_scheduler = accelerator.prepare(
         model,
         data_Loader,
+        criterion,
         optimizer,
         lr_scheduler,
     )
