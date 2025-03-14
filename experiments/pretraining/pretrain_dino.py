@@ -168,6 +168,9 @@ def main(cfg):
             )
             optimizer.param_groups[0]["weight_decay"] = weight_decay
 
+            # Debugging print
+            print("input shapes: ", [view.shape for view in list(batch.values())])
+
             # Forward pass
             teacher_outputs = [unwrapped_model.forward_teacher(view) for view in list(batch.values())[:2]]
             student_outputs = [model(view) for view in list(batch.values())]
