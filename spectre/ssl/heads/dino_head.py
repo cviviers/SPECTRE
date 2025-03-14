@@ -61,9 +61,9 @@ class DINOProjectionHead(nn.Module):
 
         layers: List[nn.Module] = []
         for block in blocks:
-            input_dim, output_dim, batch_norm, non_linearity, *bias = block
+            in_dim, out_dim, batch_norm, non_linearity, *bias = block
             use_bias = bias[0] if bias else not bool(batch_norm)
-            layers.append(nn.Linear(input_dim, output_dim, bias=use_bias))
+            layers.append(nn.Linear(in_dim, out_dim, bias=use_bias))
             if batch_norm:
                 layers.append(batch_norm)
             if non_linearity:
