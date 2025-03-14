@@ -147,6 +147,10 @@ def main(cfg):
     for epoch in range(cfg.optim.epochs):
         model.train()
         for batch in data_Loader:
+
+            print(batch.keys())
+            print(type(batch["image"]))
+            print(batch["image"])
             optimizer.zero_grad()
 
             # Update learning rate
