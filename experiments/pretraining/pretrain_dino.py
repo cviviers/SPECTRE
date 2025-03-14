@@ -179,12 +179,12 @@ def main(cfg):
             accelerator.backward(loss)
 
             # Update model
-            if cfg.optim.clip_grad_norm > 0:
+            if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
                 accelerator.clip_grad_norm_(
-                    list(unwrapped_model.student_backbone.named_parameters()), cfg.optim.clip_grad_norm
+                    unwrapped_model.student_backbone.parameters(), cfg.optim.clip_grad_norm
                 )
                 accelerator.clip_grad_norm_(
-                    list(unwrapped_model.student_head.named_parameters()), cfg.optim.clip_grad_norm
+                    unwrapped_model.student_head.parameters(), cfg.optim.clip_grad_norm
                 )
             unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
             optimizer.step()
@@ -195,6 +195,7 @@ def main(cfg):
                     "loss": loss.item(),
                     "lr": lr_scheduler.get_last_lr()[0],
                     "weight_decay": weight_decay,
+                    "momentum": momentum,
                 },
                 step=global_step,
             )
