@@ -172,6 +172,10 @@ def main(cfg):
             teacher_outputs = [unwrapped_model.forward_teacher(view) for view in list(batch.values())[:2]]
             student_outputs = [model(view) for view in list(batch.values())]
 
+            # Debugging print
+            print("teacher output shapes: ", [output.shape for output in teacher_outputs])
+            print("student output shapes: ", [output.shape for output in student_outputs])
+
             loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
 
             # Backward pass
