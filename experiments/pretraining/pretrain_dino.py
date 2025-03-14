@@ -47,12 +47,13 @@ def main(cfg):
     """
     Main function to run pretraining.
     """
-    print(cfg)
-
     # Initialize accelerator
     accelerator = Accelerator(
         log_with="wandb" if cfg.train.log_wandb else None,
     )
+
+    # Print config
+    accelerator.print(cfg)
 
     # Initialize wandb
     if cfg.train.log_wandb:
