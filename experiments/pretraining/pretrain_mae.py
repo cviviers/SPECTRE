@@ -110,7 +110,7 @@ def main(cfg):
     optimizer = AdamW(
         model.parameters(),
         lr=cfg.optim.lr,
-        betas=(cfg.optim.beta1, cfg.optim.beta2),
+        betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
         weight_decay=cfg.optim.weight_decay,
     )
 
