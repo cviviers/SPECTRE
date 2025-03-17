@@ -291,10 +291,11 @@ class MaskedVisionTransformer(nn.Module):
         # Initialize the patch embedding layer like a linear layer instead of conv
         # layer.
         w = self.vit.patch_embed.proj.weight.data
-        torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
         # Initialize the class token.
-        torch.nn.init.normal_(self.vit.cls_token, std=0.02)
+        if self.vit.has_class_token:
+            nn.init.normal_(self.vit.cls_token, std=0.02)
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
@@ -303,7 +304,7 @@ class MaskedVisionTransformer(nn.Module):
         #     pos_embedding=self.vit.pos_embed, has_class_token=self.vit.has_class_token
         # )
 
-    def _init_weights(module: nn.Module) -> None:
+    def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
             nn.init.xavier_uniform_(module.weight)
             if isinstance(module, nn.Linear) and module.bias is not None:
