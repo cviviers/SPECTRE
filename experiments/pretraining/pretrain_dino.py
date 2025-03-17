@@ -204,10 +204,10 @@ def main(cfg):
                 accelerator.print(
                     f"Epoch {epoch+1}/{cfg.optim.epochs}, "
                     f"Step {global_step}/{num_steps}, "
-                    f"Loss: {loss.item():.4f}, "
-                    f"LR: {lr_scheduler.get_last_lr()[0]:.6f}, "
-                    f"Weight Decay: {weight_decay:.4f}, "
-                    f"Momentum: {momentum:.4f}"
+                    f"Loss: {loss.item():8f}, "
+                    f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
+                    f"Weight Decay: {weight_decay:.8f}, "
+                    f"Momentum: {momentum:.8f}"
                 )
                 accelerator.log(
                     {
