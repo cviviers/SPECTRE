@@ -151,8 +151,8 @@ def main(cfg):
             lr_scheduler.step()
 
             # Forward pass
-            outputs = model(batch["image"])
-            loss = criterion(outputs, batch["image"])
+            outputs, targets = model(batch["image"])
+            loss = criterion(outputs, targets)
 
             # Backward pass
             accelerator.backward(loss)
