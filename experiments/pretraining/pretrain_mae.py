@@ -159,7 +159,7 @@ def main(cfg):
 
             # print all parameters that have no gradient but require grad
             for name, param in unwrapped_model.named_parameters():
-                if param.requires_grad and not param.grad:
+                if param.requires_grad and param.grad is None:
                     print(name)
 
             # Update model
