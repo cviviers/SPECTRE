@@ -159,8 +159,8 @@ def main(cfg):
 
             # Update model
             if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
-                accelerator.clip_grad_norm_(unwrapped_model, cfg.optim.clip_grad_norm)
-
+                accelerator.clip_grad_norm_(unwrapped_model.parameters(), cfg.optim.clip_grad_norm)
+                
             optimizer.step()
 
             # Log loss, lr, and weight decay
