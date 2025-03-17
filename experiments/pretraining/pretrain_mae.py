@@ -90,7 +90,6 @@ def main(cfg):
     ):
         backbone = models.__dict__[cfg.model.architecture](
             num_classes=0,
-            dynamic_img_size=True,
         )
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
