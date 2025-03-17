@@ -9,6 +9,7 @@ train:
   cache_dataset: true
   cache_dir: ./cache/monai/
   log_wandb: true
+  log_freq: 1
 optim:
   epochs: 100
   weight_decay: 0.04

@@ -200,15 +200,24 @@ def main(cfg):
             optimizer.step()
 
             # Log loss, lr, and weight decay
-            accelerator.log(
-                {
-                    "loss": loss.item(),
-                    "lr": lr_scheduler.get_last_lr()[0],
-                    "weight_decay": weight_decay,
-                    "momentum": momentum,
-                },
-                step=global_step,
-            )
+            if global_step % cfg.train.log_freq == 0:
+                accelerator.print(
+                    f"Epoch {epoch+1}/{cfg.optim.epochs}, "
+                    f"Step {global_step}/{num_steps}, "
+                    f"Loss: {loss.item():.4f}, "
+                    f"LR: {lr_scheduler.get_last_lr()[0]:.6f}, "
+                    f"Weight Decay: {weight_decay:.4f}, "
+                    f"Momentum: {momentum:.4f}"
+                )
+                accelerator.log(
+                    {
+                        "loss": loss.item(),
+                        "lr": lr_scheduler.get_last_lr()[0],
+                        "weight_decay": weight_decay,
+                        "momentum": momentum,
+                    },
+                    step=global_step,
+                )
 
             # Update global step
             global_step += 1
