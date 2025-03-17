@@ -49,7 +49,6 @@ class MAETransform(Compose):
                     keys=("image",),
                     roi_size=tuple(int(sz * 0.2) for sz in input_size),
                     max_roi_size=input_size,
-                    num_samples=2,
                     random_center=True,
                     random_size=True,
                 ),

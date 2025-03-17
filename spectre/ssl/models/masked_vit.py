@@ -1,11 +1,12 @@
 import math
-from typing import Optional
+from typing import Optional, Tuple, List
 
 import torch
 import torch.nn as nn
 
 from spectre.models import VisionTransformer
 from spectre.utils.models import (
+    mask_bool,
     get_at_index, 
     mask_at_index,
     resample_abs_pos_embed,
@@ -74,12 +75,38 @@ class MaskedVisionTransformer(nn.Module):
         elif self.vit.global_pool:
             x = x[:, 0]  # class token
         return x
+    
+    def forward_intermediates(
+        self,
+        images: torch.Tensor,
+        idx_mask: Optional[torch.Tensor] = None,
+        idx_keep: Optional[torch.Tensor] = None,
+        norm: bool = False,
+        mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        # preprocess images, convert to tokens and add positional embeddings
+        tokens = self.preprocess(
+            images=images, idx_mask=idx_mask, idx_keep=idx_keep, mask=mask
+        )
+        # normalization layer
+        tokens = self.vit.norm_pre(tokens)
+
+        intermediates: List[torch.Tensor] = []
+        for blk in self.vit.blocks:
+            tokens = blk(tokens)
+            intermediates.append(self.vit.norm(tokens) if norm else tokens)
+
+        # normalize
+        out: torch.Tensor = self.vit.norm(tokens)
+
+        return out, intermediates
 
     def encode(
         self,
         images: torch.Tensor,
         idx_mask: Optional[torch.Tensor] = None,
         idx_keep: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Encode input images.
 
@@ -98,25 +125,76 @@ class MaskedVisionTransformer(nn.Module):
         Returns:
             Batch of encoded output tokens.
         """
+        tokens: torch.Tensor = self.preprocess(
+            images=images, idx_mask=idx_mask, idx_keep=idx_keep, mask=mask
+        )
+        # normalization layer
+        tokens = self.vit.norm_pre(tokens)
+        # apply Transformer blocks
+        tokens = self.vit.blocks(tokens)
+        # normalize
+        tokens = self.vit.norm(tokens)
+        return tokens
+
+    def preprocess(
+        self,
+        images: torch.Tensor,
+        idx_mask: Optional[torch.Tensor] = None,
+        idx_keep: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Convert images to tokens, add positional embeddings, and apply masking.
+
+        Args:
+            images:
+                Tensor with shape (batch_size, channels, image_height, image_width).
+            idx_mask:
+                Tensor with shape (batch_size, num_tokens_to_mask) where each
+                entry is an index of the token to mask in the respective batch.
+                Indices must be in the range [0, sequence_length).
+                If specified, the indexed tokens are masked with self.mask_token.
+                Cannot be used in combination with mask argument.
+            idx_keep:
+                Tensor with shape (batch_size, num_tokens_to_keep) where each
+                entry is an index of the token to keep in the respective batch.
+                Indices must be in the range [0, sequence_length).
+                If set, only the indexed tokens will be returned.
+                Is applied after any masking operation.
+            mask:
+                Tensor with shape (batch_size, sequence_length) indicating which tokens
+                should be masked. Tokens where the mask is True will be masked with
+                self.mask_token.
+
+        Returns:
+            Tensor with shape (batch_size, sequence_length, embed_dim) containing the
+            preprocessed tokens. If idx_keep is set, only num_tokens_to_keep tokens
+            per sequence are returned. Any class or prefix tokens are prepended to the
+            sequence.
+        """
+        if idx_mask is not None and mask is not None:
+            raise ValueError("idx_mask and mask cannot both be set at the same time.")
+
         # convert images to tokens
-        input = self.images_to_tokens(images)
+        tokens = self.images_to_tokens(images)
         # add prefix tokens if needed
-        input = self.add_prefix_tokens(input)
+        tokens = self.prepend_prefix_tokens(tokens)
 
         if idx_mask is not None:
-            input = mask_at_index(input, idx_mask, self.mask_token)
+            tokens = mask_at_index(
+                tokens=tokens, index=idx_mask, mask_token=self.mask_token
+            )
+        elif mask is not None:
+            tokens = mask_bool(
+                tokens=tokens, mask=mask, mask_token=self.mask_token
+            )
+
         # add positional encoding
-        input = self.add_pos_embed(input)
+        tokens = self.add_pos_embed(tokens)
 
         if idx_keep is not None:
-            input = get_at_index(input, idx_keep)
-        # normalization layer
-        input = self.vit.norm_pre(input)
-        # apply Transformer blocks
-        input = self.vit.blocks(input)
-        # normalize
-        out: torch.Tensor = self.vit.norm(input)
-        return out
+            tokens = get_at_index(tokens, idx_keep)
+
+        return tokens
 
     def images_to_tokens(self, images: torch.Tensor) -> torch.Tensor:
         """Converts images into patch tokens.
@@ -135,7 +213,7 @@ class MaskedVisionTransformer(nn.Module):
             tokens = tokens.flatten(2).transpose(1, 2)  # NCHWD -> NLC
         return tokens
 
-    def add_prefix_tokens(self, x: torch.Tensor) -> torch.Tensor:
+    def prepend_prefix_tokens(self, x: torch.Tensor) -> torch.Tensor:
         """Adds prefix tokens to image patch tokens.
 
         Args:
