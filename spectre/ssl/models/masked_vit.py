@@ -19,21 +19,27 @@ class MaskedVisionTransformer(nn.Module):
     Attributes:
         vit: The VisionTransformer object.
         mask_token: The mask token.
-
+        use_mask_token: Whether to use the mask token.
     """
 
     def __init__(
         self,
         vit: VisionTransformer,
         mask_token: Optional[nn.Parameter] = None,
+        use_mask_token: bool = True,
     ) -> None:
         super().__init__()
         self.vit = vit
-        self.mask_token = (
-            mask_token
-            if mask_token is not None
-            else nn.Parameter(torch.zeros(1, 1, self.vit.embed_dim))
-        )
+        self.use_mask_token = use_mask_token
+        if self.use_mask_token:
+            self.mask_token = (
+                mask_token
+                if mask_token is not None
+                else nn.Parameter(torch.zeros(1, 1, self.vit.embed_dim))
+            )
+        else:
+            self.mask_token = None
+
         self._initialize_weights()
 
     @property
@@ -121,7 +127,10 @@ class MaskedVisionTransformer(nn.Module):
                 Tensor with shape (batch_size, num_tokens_to_keep) where each
                 entry is an index of the token to keep in the respective batch.
                 If specified, only the indexed tokens will be encoded.
-
+            mask:
+                Tensor with shape (batch_size, sequence_length) indicating which tokens
+                should be masked. Tokens where the mask is True will be masked with
+                self.mask_token.
         Returns:
             Batch of encoded output tokens.
         """
@@ -173,6 +182,12 @@ class MaskedVisionTransformer(nn.Module):
         """
         if idx_mask is not None and mask is not None:
             raise ValueError("idx_mask and mask cannot both be set at the same time.")
+        
+        if (idx_mask is not None or mask is not None) and not self.use_mask_token:
+            raise ValueError(
+                "Using mask token is disabled. Set use_mask_token=True to use masking"
+                " or use idx_keep to select tokens."
+            )
 
         # convert images to tokens
         tokens = self.images_to_tokens(images)

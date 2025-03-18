@@ -35,7 +35,10 @@ class MAE(nn.Module):
         self.mask_ratio = mask_ratio
         self.patch_size = backbone.patch_embed.patch_size
 
-        self.backbone = MaskedVisionTransformer(vit=backbone)
+        self.backbone = MaskedVisionTransformer(
+            vit=backbone,
+            use_mask_token=False,
+        )
         self.sequence_length = self.backbone.sequence_length
 
         self.decoder = MAEDecoder(
