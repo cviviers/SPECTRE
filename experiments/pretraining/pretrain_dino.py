@@ -223,7 +223,7 @@ def main(cfg):
             # Update global step
             global_step += 1
 
-        if (epoch + 1) % cfg.train.saveckp_freq == 0:
+        if (epoch + 1) % cfg.train.saveckp_freq == 0 or (epoch + 1) == cfg.optim.epochs:
             accelerator.save_model(
                 model,
                 os.path.join(
