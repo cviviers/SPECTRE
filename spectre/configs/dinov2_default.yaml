@@ -38,5 +38,5 @@ model:
   mask_ratio_max: 0.5
   mask_probability: 0.5
   dino_loss_weight: 1.0
-  koleos_loss_weight: 0.1
+  koleo_loss_weight: 0.1
   ibot_loss_weight: 1.0
