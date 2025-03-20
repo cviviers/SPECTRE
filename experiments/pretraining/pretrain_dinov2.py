@@ -130,7 +130,7 @@ def main(cfg):
     )
     criterion_koleo = KoLeoLoss()
     criterion_ibot = iBOTPatchLoss(
-        patch_output_dim=cfg.model.output_dim,
+        output_dim=cfg.model.output_dim,
         warmup_teacher_temp=cfg.model.warmup_teacher_temp,
         teacher_temp=cfg.model.teacher_temp,
         warmup_teacher_temp_epochs=cfg.model.warmup_teacher_temp_epochs,

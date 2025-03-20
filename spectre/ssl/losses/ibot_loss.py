@@ -14,7 +14,7 @@ class iBOTPatchLoss(nn.Module):
 
     def __init__(
         self,
-        patch_out_dim: int,
+        output_dim: int,
         warmup_teacher_temp: float = 0.04,
         teacher_temp: float = 0.04,
         warmup_teacher_temp_epochs: int = 30,
@@ -24,7 +24,7 @@ class iBOTPatchLoss(nn.Module):
         """Initializes the iBOT patch loss.
 
         Args:
-            patch_out_dim: Output dimensionality of patch embeddings.
+            output_dim: Output dimensionality of patch embeddings.
             student_temp: Temperature parameter for the student model.
             center_momentum: Momentum for updating the teacher center.
             warmup_teacher_temp: Initial temperature for the teacher.
@@ -36,7 +36,7 @@ class iBOTPatchLoss(nn.Module):
         self.center_momentum = center_momentum
         self.teacher_temp = teacher_temp
         self.warmup_teacher_temp_epochs = warmup_teacher_temp_epochs
-        self.register_buffer("center", torch.zeros(1, 1, patch_out_dim))
+        self.register_buffer("center", torch.zeros(1, 1, output_dim))
 
         # Warmup schedule for teacher temperature
         self.teacher_temp_schedule = torch.linspace(
