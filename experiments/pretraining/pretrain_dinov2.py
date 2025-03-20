@@ -252,7 +252,8 @@ def main(cfg):
                     cfg.optim.clip_grad_norm
                 )
 
-            unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
+            unwrapped_model.student_head_dino.cancel_last_layer_gradients(epoch)
+            unwrapped_model.student_head_ibot.cancel_last_layer_gradients(epoch)
             optimizer.step()
 
             # Log loss, lr, and weight decay
