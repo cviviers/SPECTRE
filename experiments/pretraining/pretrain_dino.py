@@ -180,6 +180,8 @@ def main(cfg):
 
             with accelerator.accumulate(model):
 
+                print(batch)
+
                 # Forward pass
                 teacher_outputs = [unwrapped_model.forward_teacher(view) for view in batch["global_crops"]]
                 student_outputs = [model(view) for view in batch["global_crops"] + batch["local_crops"]]
