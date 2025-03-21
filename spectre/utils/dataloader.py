@@ -42,14 +42,23 @@ def get_dataloader(
     else:
         raise NotImplementedError(f"Dataset {dataset} not implemented.")
     
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        shuffle=shuffle,
-        collate_fn=collate_fn,
-    )
+    if collate_fn is not None:
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            shuffle=shuffle,
+            collate_fn=collate_fn,
+        )
+    else:
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            shuffle=shuffle,
+        )  # Cannot pass None to use MONAI collate_fn
     return dataloader
 
 
