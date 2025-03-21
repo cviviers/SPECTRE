@@ -154,11 +154,12 @@ def main(cfg):
     # Initialize learning rate scheduler
     lr_scheduler = CosineWarmupScheduler(
         optimizer,
-        warmup_epochs=num_warmup_steps,
-        max_epochs=num_steps,
+        warmup_epochs=cfg.optim.warmup_epochs * len(data_loader),
+        max_epochs=cfg.optim.epochs * len(data_loader),
         start_value=cfg.optim.lr,
         end_value=cfg.optim.min_lr,
     )
+    print(type(lr_scheduler))
 
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion_dino, criterion_koleo, criterion_ibot, \
@@ -167,6 +168,8 @@ def main(cfg):
             criterion_ibot, optimizer, lr_scheduler,
         )
     unwrapped_model = accelerator.unwrap_model(model)
+
+    print(type(lr_scheduler))
 
     # Start training
     global_step: int = 0
