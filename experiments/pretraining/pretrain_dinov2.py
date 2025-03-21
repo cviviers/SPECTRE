@@ -3,7 +3,6 @@ import argparse
 from itertools import chain
 from functools import partial
 
-import torch
 from torch.optim import AdamW
 from accelerate import Accelerator
 
@@ -145,14 +144,6 @@ def main(cfg):
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
 
-    # calculate number of steps for training
-    num_steps = cfg.optim.epochs * len(data_loader) // accelerator.num_processes
-    num_warmup_steps = (
-        cfg.optim.warmup_epochs * len(data_loader) // accelerator.num_processes
-    )
-
-    print(f"Lenght dataloader on rank {torch.distributed.get_rank()}: {len(data_loader)}")
-
     # Initialize learning rate scheduler
     lr_scheduler = CosineWarmupScheduler(
         optimizer,
@@ -161,7 +152,6 @@ def main(cfg):
         start_value=cfg.optim.lr,
         end_value=cfg.optim.min_lr,
     )
-    print(type(lr_scheduler))
 
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion_dino, criterion_koleo, criterion_ibot, \
@@ -169,10 +159,13 @@ def main(cfg):
             model, data_loader, criterion_dino, criterion_koleo,
             criterion_ibot, optimizer, lr_scheduler,
         )
+    
+    # Keep unwrapped model for easier access to individual components
     unwrapped_model = accelerator.unwrap_model(model)
 
-    print(type(lr_scheduler))
-    print(f"Lenght dataloader on rank {torch.distributed.get_rank()}: {len(data_loader)}")
+    # Get number of training steps
+    # Dataloader already per GPU so no need to divide by number of processes
+    total_num_steps = cfg.optim.epochs * len(data_loader)
 
     # Start training
     global_step: int = 0
@@ -188,7 +181,7 @@ def main(cfg):
             # Update momentum
             momentum = cosine_schedule(
                 global_step,
-                num_steps,
+                total_num_steps,
                 cfg.model.momentum_teacher,
                 cfg.model.momentum_teacher_end,
             )
@@ -199,7 +192,7 @@ def main(cfg):
             # Update weight decay
             weight_decay = cosine_schedule(
                 global_step,
-                num_steps,
+                total_num_steps,
                 cfg.optim.weight_decay,
                 cfg.optim.weight_decay_end,
             )
@@ -265,8 +258,8 @@ def main(cfg):
             # Log loss, lr, and weight decay
             if global_step % cfg.train.log_freq == 0:
                 accelerator.print(
-                    f"Epoch {epoch+1}/{cfg.optim.epochs}, "
-                    f"Step {global_step}/{num_steps}, "
+                    f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
+                    f"Step {global_step + 1}/{total_num_steps}, "
                     f"Loss: {loss.item():8f}, "
                     f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
                     f"Weight Decay: {weight_decay:.8f}, "

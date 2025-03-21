@@ -1,6 +1,5 @@
 import os
 import argparse
-from itertools import chain
 
 from torch.nn import MSELoss
 from torch.optim import AdamW
@@ -114,17 +113,11 @@ def main(cfg):
         weight_decay=cfg.optim.weight_decay,
     )
 
-    # calculate number of steps for training
-    num_steps = cfg.optim.epochs * len(data_loader) // accelerator.num_processes
-    num_warmup_steps = (
-        cfg.optim.warmup_epochs * len(data_loader) // accelerator.num_processes
-    )
-
     # Initialize learning rate scheduler
     lr_scheduler = CosineWarmupScheduler(
         optimizer,
-        warmup_epochs=num_warmup_steps,
-        max_epochs=num_steps,
+        warmup_epochs=cfg.optim.warmup_epochs * len(data_loader),
+        max_epochs=cfg.optim.epochs * len(data_loader),
         start_value=cfg.optim.lr,
         end_value=cfg.optim.min_lr,
     )
@@ -137,7 +130,13 @@ def main(cfg):
         optimizer,
         lr_scheduler,
     )
+        
+    # Keep unwrapped model for easier access to individual components
     unwrapped_model = accelerator.unwrap_model(model)
+
+    # Get number of training steps
+    # Dataloader already per GPU so no need to divide by number of processes
+    total_num_steps = cfg.optim.epochs * len(data_loader)
 
     # Start training
     global_step: int = 0
@@ -171,8 +170,8 @@ def main(cfg):
             # Log loss, lr, and weight decay
             if global_step % cfg.train.log_freq == 0:
                 accelerator.print(
-                    f"Epoch {epoch+1}/{cfg.optim.epochs}, "
-                    f"Step {global_step}/{num_steps}, "
+                    f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
+                    f"Step {global_step + 1}/{total_num_steps}, "
                     f"Loss: {loss.item():8f}, "
                     f"LR: {lr_scheduler.get_last_lr()[0]:.8f}"
                 )
