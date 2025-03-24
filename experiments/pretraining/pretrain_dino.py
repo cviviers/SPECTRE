@@ -1,7 +1,9 @@
 import os
 import argparse
 from itertools import chain
+from functools import partial
 
+import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
 
@@ -101,6 +103,7 @@ def main(cfg):
     ):
         backbone = models.__dict__[cfg.model.architecture](
             num_classes=0,
+            norm_layer=partial(nn.BatchNorm3d, track_running_stats=False),
         )
         embed_dim = backbone.num_features
     else:
