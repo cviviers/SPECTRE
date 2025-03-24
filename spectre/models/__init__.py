@@ -7,7 +7,8 @@ from .vits import (
 )
 from .resnets import ResNet
 from .resnets import (
-    resnet18, 
+    resnet18,
+    resnet34, 
     resnet50, 
     resnet101, 
     resnext50,
