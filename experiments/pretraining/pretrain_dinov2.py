@@ -212,7 +212,7 @@ def main(cfg):
                     global_crops=batch["global_crops"].as_tensor(), 
                     local_crops=batch["local_crops"].as_tensor(), 
                     masks=torch.cat([
-                        torch.zeros(batch["masks"].shape[0], 1, dtype=torch.bool), 
+                        torch.zeros(batch["masks"].shape[0], 1, dtype=torch.bool, device=batch["masks"].device), 
                         batch["masks"]
                     ], dim=1),  # Add cls token to mask here, not sure where to do this yet ...
                     mask_indices=batch["mask_indices"], 
