@@ -94,6 +94,15 @@ def main(cfg):
             dynamic_img_size=True,
         )
         embed_dim = backbone.embed_dim
+    elif (
+        cfg.model.architecture in models.__dict__
+        and cfg.model.architecture.startswith("resnet")
+        or cfg.model.architecture.startswith("resnext")
+    ):
+        backbone = models.__dict__[cfg.model.architecture](
+            num_classes=0,
+        )
+        embed_dim = backbone.num_features
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
 
