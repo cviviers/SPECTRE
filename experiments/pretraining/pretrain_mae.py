@@ -143,13 +143,13 @@ def main(cfg):
     for epoch in range(cfg.optim.epochs):
         model.train()
         for batch in data_loader:
-
-            optimizer.zero_grad()
-
-            # Update learning rate
-            lr_scheduler.step()
-
+            
             with accelerator.accumulate(model):
+
+                optimizer.zero_grad()
+
+                # Update learning rate
+                lr_scheduler.step()
 
                 # Forward pass
                 outputs, targets = model(batch["image"])
@@ -164,24 +164,24 @@ def main(cfg):
 
                 optimizer.step()
 
-            # Log loss, lr, and weight decay
-            if global_step % cfg.train.log_freq == 0:
-                accelerator.print(
-                    f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
-                    f"Step {global_step + 1}/{total_num_steps}, "
-                    f"Loss: {loss.item():8f}, "
-                    f"LR: {lr_scheduler.get_last_lr()[0]:.8f}"
-                )
-                accelerator.log(
-                    {
-                        "loss": loss.item(),
-                        "lr": lr_scheduler.get_last_lr()[0],
-                    },
-                    step=global_step,
-                )
+                # Log loss, lr, and weight decay
+                if global_step % cfg.train.log_freq == 0:
+                    accelerator.print(
+                        f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
+                        f"Step {global_step + 1}/{total_num_steps}, "
+                        f"Loss: {loss.item():8f}, "
+                        f"LR: {lr_scheduler.get_last_lr()[0]:.8f}"
+                    )
+                    accelerator.log(
+                        {
+                            "loss": loss.item(),
+                            "lr": lr_scheduler.get_last_lr()[0],
+                        },
+                        step=global_step,
+                    )
 
-            # Update global step
-            global_step += 1
+                # Update global step
+                global_step += 1
 
         if (epoch + 1) % cfg.train.saveckp_freq == 0 or (epoch + 1) == cfg.optim.epochs:
             accelerator.save_model(

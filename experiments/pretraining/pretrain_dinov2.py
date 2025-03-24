@@ -175,32 +175,32 @@ def main(cfg):
         model.train()
         for batch in data_loader:
 
-            optimizer.zero_grad()
-
-            # Update learning rate
-            lr_scheduler.step()
-
-            # Update momentum
-            momentum = cosine_schedule(
-                global_step,
-                total_num_steps,
-                cfg.model.momentum_teacher,
-                cfg.model.momentum_teacher_end,
-            )
-            update_momentum(unwrapped_model.student_backbone.vit, unwrapped_model.teacher_backbone, momentum)
-            update_momentum(unwrapped_model.student_head_dino, unwrapped_model.teacher_head_dino, momentum)
-            update_momentum(unwrapped_model.student_head_ibot, unwrapped_model.teacher_head_ibot, momentum)
-
-            # Update weight decay
-            weight_decay = cosine_schedule(
-                global_step,
-                total_num_steps,
-                cfg.optim.weight_decay,
-                cfg.optim.weight_decay_end,
-            )
-            optimizer.param_groups[0]["weight_decay"] = weight_decay
-
             with accelerator.accumulate(model):
+
+                optimizer.zero_grad()
+
+                # Update learning rate
+                lr_scheduler.step()
+
+                # Update momentum
+                momentum = cosine_schedule(
+                    global_step,
+                    total_num_steps,
+                    cfg.model.momentum_teacher,
+                    cfg.model.momentum_teacher_end,
+                )
+                update_momentum(unwrapped_model.student_backbone.vit, unwrapped_model.teacher_backbone, momentum)
+                update_momentum(unwrapped_model.student_head_dino, unwrapped_model.teacher_head_dino, momentum)
+                update_momentum(unwrapped_model.student_head_ibot, unwrapped_model.teacher_head_ibot, momentum)
+
+                # Update weight decay
+                weight_decay = cosine_schedule(
+                    global_step,
+                    total_num_steps,
+                    cfg.optim.weight_decay,
+                    cfg.optim.weight_decay_end,
+                )
+                optimizer.param_groups[0]["weight_decay"] = weight_decay
 
                 # Forward pass
                 teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
@@ -264,28 +264,28 @@ def main(cfg):
                 unwrapped_model.student_head_ibot.cancel_last_layer_gradients(epoch)
                 optimizer.step()
 
-            # Log loss, lr, and weight decay
-            if global_step % cfg.train.log_freq == 0:
-                accelerator.print(
-                    f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
-                    f"Step {global_step + 1}/{total_num_steps}, "
-                    f"Loss: {loss.item():8f}, "
-                    f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
-                    f"Weight Decay: {weight_decay:.8f}, "
-                    f"Momentum: {momentum:.8f}"
-                )
-                accelerator.log(
-                    {
-                        "loss": loss.item(),
-                        "lr": lr_scheduler.get_last_lr()[0],
-                        "weight_decay": weight_decay,
-                        "momentum": momentum,
-                    },
-                    step=global_step,
-                )
+                # Log loss, lr, and weight decay
+                if global_step % cfg.train.log_freq == 0:
+                    accelerator.print(
+                        f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
+                        f"Step {global_step + 1}/{total_num_steps}, "
+                        f"Loss: {loss.item():8f}, "
+                        f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
+                        f"Weight Decay: {weight_decay:.8f}, "
+                        f"Momentum: {momentum:.8f}"
+                    )
+                    accelerator.log(
+                        {
+                            "loss": loss.item(),
+                            "lr": lr_scheduler.get_last_lr()[0],
+                            "weight_decay": weight_decay,
+                            "momentum": momentum,
+                        },
+                        step=global_step,
+                    )
 
-            # Update global step
-            global_step += 1
+                # Update global step
+                global_step += 1
 
         if (epoch + 1) % cfg.train.saveckp_freq == 0 or (epoch + 1) == cfg.optim.epochs:
             accelerator.save_model(
