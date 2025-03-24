@@ -267,7 +267,8 @@ class MaskedVisionTransformer(nn.Module):
             x = x.transpose(1, 2)  # NLC -> NCL
             batch_size = x.size(0)
             num_channels = x.size(1)
-            grid_size = self.vit.patch_embed.grid_size
+            grid_size = round(math.pow(x.size(2), 1 / 3))
+            grid_size = (grid_size, grid_size, grid_size)
             x = x.view(
                 batch_size,
                 num_channels,
@@ -281,10 +282,11 @@ class MaskedVisionTransformer(nn.Module):
             B, H, W, D, C = x.shape
             pos_embed = resample_abs_pos_embed(
                 self.vit.pos_embed,
-                (D, H, W),
+                (H, W, D),
                 num_prefix_tokens=(
                     0 if self.vit.no_embed_class else self.vit.num_prefix_tokens
                 ),
+                old_size=self.vit.patch_embed.grid_size,
             )
             x = x.view(B, -1, C)
         else:
