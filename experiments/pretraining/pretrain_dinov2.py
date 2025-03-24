@@ -186,7 +186,7 @@ def main(cfg):
                 cfg.model.momentum_teacher,
                 cfg.model.momentum_teacher_end,
             )
-            update_momentum(unwrapped_model.student_backbone, unwrapped_model.teacher_backbone, momentum)
+            update_momentum(unwrapped_model.student_backbone.vit, unwrapped_model.teacher_backbone, momentum)
             update_momentum(unwrapped_model.student_head_dino, unwrapped_model.teacher_head_dino, momentum)
             update_momentum(unwrapped_model.student_head_ibot, unwrapped_model.teacher_head_ibot, momentum)
 
