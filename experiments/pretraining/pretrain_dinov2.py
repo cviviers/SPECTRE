@@ -3,6 +3,7 @@ import argparse
 from itertools import chain
 from functools import partial
 
+import torch
 from torch.optim import AdamW
 from accelerate import Accelerator
 
@@ -201,10 +202,6 @@ def main(cfg):
 
             with accelerator.accumulate(model):
 
-                print(batch["masks"].shape)
-                import sys
-                sys.exit()
-
                 # Forward pass
                 teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
                     global_crops=batch["global_crops"].as_tensor(), 
@@ -214,7 +211,10 @@ def main(cfg):
                 student_cls_tokens_global, student_patch_tokens_global, student_cls_tokens_local = model(
                     global_crops=batch["global_crops"].as_tensor(), 
                     local_crops=batch["local_crops"].as_tensor(), 
-                    masks=batch["masks"],
+                    masks=torch.cat([
+                        torch.zeros(batch["masks"].shape[0], 1, dtype=torch.bool), 
+                        batch["masks"]
+                    ], dim=1),  # Add cls token to mask here, not sure where to do this yet ...
                     mask_indices=batch["mask_indices"], 
                     upperbound=batch["upperbound"]
                 )
