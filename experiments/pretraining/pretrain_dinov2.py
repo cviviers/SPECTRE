@@ -210,7 +210,7 @@ def main(cfg):
                 student_cls_tokens_global, student_patch_tokens_global, student_cls_tokens_local = model(
                     global_crops=batch["global_crops"].as_tensor(), 
                     local_crops=batch["local_crops"].as_tensor(), 
-                    masks=batch["masks"].as_tensor(),
+                    masks=batch["masks"],
                     mask_indices=batch["mask_indices"], 
                     upperbound=batch["upperbound"]
                 )
@@ -227,7 +227,7 @@ def main(cfg):
                 )
 
                 koleo_loss = sum(
-                    criterion_koleo(p.as_tensor()) for p in student_cls_tokens_global.chunk(2, dim=0)
+                    criterion_koleo(p) for p in student_cls_tokens_global.chunk(2, dim=0)
                 )
 
                 ibot_loss = criterion_ibot.forward_masked(
