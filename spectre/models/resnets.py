@@ -83,7 +83,7 @@ class BasicBlock(nn.Module):
 
         if self.downsample is not None:
             shortcut = self.downsample(shortcut)
-        x += shortcut
+        x = x + shortcut
         x = self.act2(x)
 
         return x
