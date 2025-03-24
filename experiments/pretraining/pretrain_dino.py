@@ -154,9 +154,6 @@ def main(cfg):
         model.train()
         for batch in data_loader:
 
-            print(type(batch))
-            print(len(batch))
-
             optimizer.zero_grad()
 
             # Update learning rate
