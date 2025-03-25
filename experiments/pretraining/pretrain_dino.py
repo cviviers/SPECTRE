@@ -156,6 +156,12 @@ def main(cfg):
     # Keep unwrapped model for easier access to individual components
     unwrapped_model = accelerator.unwrap_model(model)
 
+    import sys
+    print(unwrapped_model)
+    print("\n\n\n\n\n\n\n")
+    print(list(unwrapped_model.named_parameters()))
+    sys.exit()
+
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(data_loader)
