@@ -146,11 +146,6 @@ def main(cfg):
             
             with accelerator.accumulate(model):
 
-                optimizer.zero_grad()
-
-                # Update learning rate
-                lr_scheduler.step()
-
                 # Forward pass
                 outputs, targets = model(batch["image"])
                 loss = criterion(outputs, targets)
@@ -179,6 +174,12 @@ def main(cfg):
                         },
                         step=global_step,
                     )
+                
+                # Zero gradients
+                optimizer.zero_grad()
+
+                # Update learning rate
+                lr_scheduler.step()
 
                 # Update global step
                 global_step += 1

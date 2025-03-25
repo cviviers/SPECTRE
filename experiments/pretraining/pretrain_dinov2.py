@@ -177,11 +177,6 @@ def main(cfg):
 
             with accelerator.accumulate(model):
 
-                optimizer.zero_grad()
-
-                # Update learning rate
-                lr_scheduler.step()
-
                 # Update momentum
                 momentum = cosine_schedule(
                     global_step,
@@ -283,6 +278,12 @@ def main(cfg):
                         },
                         step=global_step,
                     )
+                
+                # Zero gradients
+                optimizer.zero_grad()
+
+                # Update learning rate
+                lr_scheduler.step()
 
                 # Update global step
                 global_step += 1
