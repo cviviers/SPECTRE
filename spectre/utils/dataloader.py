@@ -62,7 +62,7 @@ def get_dataloader(
     return dataloader
 
 
-def extended_collate(samples_list, mask_ratio, mask_probability=None, n_tokens=None, mask_generator=None):
+def extended_collate(samples_list, mask_ratio=None, mask_probability=None, n_tokens=None, mask_generator=None):
     """
     Applies MONAI's list_data_collate first and then extends it with DINOv2 masking logic.
 
@@ -84,7 +84,12 @@ def extended_collate(samples_list, mask_ratio, mask_probability=None, n_tokens=N
     global_crops = torch.cat(collated_data["global_crops"], dim=0)
     local_crops = torch.cat(collated_data["local_crops"], dim=0)
 
-    if (mask_probability is None or n_tokens is None or mask_generator is None):
+    if (
+        mask_ratio is None
+        or mask_probability is None 
+        or n_tokens is None 
+        or mask_generator is None
+    ):
         return {
             "global_crops": global_crops,
             "local_crops": local_crops,
