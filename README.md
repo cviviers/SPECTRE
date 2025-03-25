@@ -67,12 +67,12 @@ docker build -t spectre-ct .
 ### **Running Experiments Inside Docker**
 Once the image is built, you can start a container and execute scripts inside it. For example, to run a DINO pretraining experiment:
 ```bash
-docker run --gpus all --rm -v $(pwd):/app spectre-ct python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir outputs/pretraining/dino/
+docker run --gpus all --rm -v $(pwd):/app spectre-ct python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir $(pwd)/outputs/pretraining/dino/
 ```
 - `--gpus all` enables GPU acceleration if available.
 - `--rm` removes the container after execution.
 - `-v $(pwd):/app` mounts the current directory inside the container.
-- `python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir outputs/pretraining/dino/` runs the DINO pretraining script with the default configuration file and stores the models weights in an output folder.
+- `python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir $(pwd)/outputs/pretraining/dino/` runs the DINO pretraining script with the default configuration file and stores the models weights in an output folder.
 
 
 ## 📜 Citation
