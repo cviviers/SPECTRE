@@ -27,7 +27,7 @@ def get_args_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config_file",
         type=str,
-        default="configs/dino_default.yaml",
+        default="spectre/configs/dino_default.yaml",
         help="path to config file",
     )
     parser.add_argument(

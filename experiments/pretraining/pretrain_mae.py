@@ -23,7 +23,7 @@ def get_args_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config_file",
         type=str,
-        default="configs/mae_default.yaml",
+        default="spectre/configs/mae_default.yaml",
         help="path to config file",
     )
     parser.add_argument(
