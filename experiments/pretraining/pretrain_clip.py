@@ -8,7 +8,7 @@ from torch.optim import AdamW
 from accelerate import Accelerator
 
 import spectre.models as models
-from spectre.ssl.frameworks import vision_language
+from spectre.ssl.frameworks.vision_language import SigLIP3D
 from spectre.ssl.losses import siglip_loss
 from spectre.ssl.transforms import SigLipTransform
 from spectre.configs import default_config_clip
@@ -112,7 +112,7 @@ def main(cfg):
     )
 
     # Initialize DINO model
-    model = DINOv2(
+    model = SigLIP3D(
         backbone,
         input_dim=embed_dim,
         hidden_dim=cfg.model.hidden_dim,
