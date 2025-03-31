@@ -198,7 +198,6 @@ def main(cfg):
                    batch['image'], batch['input_ids'], batch['attention_mask'], return_loss = True
                 )
 
-
                 # Backward pass
                 accelerator.backward(loss)
 
@@ -223,14 +222,12 @@ def main(cfg):
                         f"Loss: {loss.item():8f}, "
                         f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
                         f"Weight Decay: {weight_decay:.8f}, "
-                        f"Momentum: {momentum:.8f}"
                     )
                     accelerator.log(
                         {
                             "loss": loss.item(),
                             "lr": lr_scheduler.get_last_lr()[0],
                             "weight_decay": weight_decay,
-                            "momentum": momentum,
                         },
                         step=global_step,
                     )
