@@ -72,7 +72,7 @@ class DINOv2(nn.Module):
     ):
         super().__init__()
 
-        self.student_backbone = MaskedVisionTransformer(vit=backbone, use_mask_token=True)
+        self.student_backbone = MaskedVisionTransformer(vit=backbone)
         self.student_head_dino = DINOProjectionHead(
             input_dim, hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=1,
         )
