@@ -4,8 +4,10 @@ import torch.nn.functional as F
 
 
 class KoLeoLoss(nn.Module):
-    """Kozachenko-Leonenko entropic loss regularizer from Sablayrolles et al. - 2018 - Spreading vectors for similarity search"""
-
+    """
+    Kozachenko-Leonenko entropic loss regularizer from Sablayrolles et al. 
+    - 2018 - Spreading vectors for similarity search
+    """
     def __init__(self):
         super().__init__()
         self.pdist = nn.PairwiseDistance(2, eps=1e-8)
