@@ -37,8 +37,8 @@ class MAE(nn.Module):
 
         self.backbone = MaskedVisionTransformer(
             vit=backbone,
-            use_mask_token=False,
         )
+        self.backbone.mask_token = None  # remove ununsed mask token from encoder
         self.sequence_length = self.backbone.sequence_length
 
         self.decoder = MAEDecoder(

@@ -26,19 +26,14 @@ class MaskedVisionTransformer(nn.Module):
         self,
         vit: VisionTransformer,
         mask_token: Optional[nn.Parameter] = None,
-        use_mask_token: bool = True,
     ) -> None:
         super().__init__()
         self.vit = vit
-        self.use_mask_token = use_mask_token
-        if self.use_mask_token:
-            self.mask_token = (
-                mask_token
-                if mask_token is not None
-                else nn.Parameter(torch.zeros(1, 1, self.vit.embed_dim))
-            )
-        else:
-            self.mask_token = None
+        self.mask_token = (
+            mask_token
+            if mask_token is not None
+            else nn.Parameter(torch.zeros(1, 1, self.vit.embed_dim))
+        )
 
         self._initialize_weights()
 
@@ -182,12 +177,6 @@ class MaskedVisionTransformer(nn.Module):
         """
         if idx_mask is not None and mask is not None:
             raise ValueError("idx_mask and mask cannot both be set at the same time.")
-        
-        if (idx_mask is not None or mask is not None) and not self.use_mask_token:
-            raise ValueError(
-                "Using mask token is disabled. Set use_mask_token=True to use masking"
-                " or use idx_keep to select tokens."
-            )
 
         # convert images to tokens
         tokens = self.images_to_tokens(images)
