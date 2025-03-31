@@ -24,6 +24,7 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.xlsx
 MANIFEST
 
 # PyInstaller
@@ -75,6 +76,7 @@ docs/_build/
 .pybuilder/
 target/
 
+temp/
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -175,3 +177,11 @@ cython_debug/
 
 # Training/testing data
 datasets/
+
+# wandb
+wandb/
+
+# weights
+*.pt
+*.ckpt
+*.pth
