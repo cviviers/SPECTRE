@@ -86,20 +86,15 @@ def main(cfg):
         shuffle=True,
     )
 
-    accelerator.print("dataloader initialized")
-
     # Initialize backbone
     if (
         cfg.model.architecture in models.__dict__ 
         and cfg.model.architecture.startswith("vit")
     ):
-        accelerator.print("vit backbone detected")
         image_backbone = models.__dict__[cfg.model.architecture](
             num_classes=0,
         )
-        accelerator.print("vit backbone initialized")
         backbone_embed_dim = image_backbone.embed_dim
-        accelerator.print("backbone embed dim: ", backbone_embed_dim)
     elif (
         cfg.model.architecture in models.__dict__
         and cfg.model.architecture.startswith("resnet")
@@ -112,8 +107,6 @@ def main(cfg):
         backbone_embed_dim = image_backbone.num_features
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
-    
-    accelerator.print("image_backbone initialized")
 
     image_feature_comb = models.FeatureVisionTransformer(
         patch_dim=backbone_embed_dim,
@@ -122,12 +115,9 @@ def main(cfg):
         depth=cfg.model.feature_comb_num_layers,
         heads=cfg.model.feature_comb_num_heads,
     )
-    accelerator.print("backbone and feature_comb initialized")
     
     text_config = models.Qwen2Config.from_pretrained(cfg.model.text_encoder_config)
-    accelerator.print("text_config initialized")
     text_backbone = models.Qwen2Model(config=text_config)
-    accelerator.print("text_backbone initialized")
 
     # Initialize the SigLIP model
     model = SigLIP(
