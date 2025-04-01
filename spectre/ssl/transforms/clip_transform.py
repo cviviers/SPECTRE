@@ -165,7 +165,9 @@ class TokenizeTransform(MapTransform):
         self.text_key = text_key 
     def __call__(self, data):
         
-        tokenizer_output = self.tokenizer(str(data[self.text_key]), add_special_tokens=True)
+        tokenizer_output = self.tokenizer.batch_encode_plus(
+            str(data[self.text_key]), add_special_tokens=True
+        )
         data["input_ids"] = tokenizer_output["input_ids"]
         data["attention_mask"] = tokenizer_output["attention_mask"]
         return data
