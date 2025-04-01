@@ -86,6 +86,8 @@ def main(cfg):
         shuffle=True,
     )
 
+    accelerator.print("dataloader initialized")
+
     # Initialize backbone
     if (
         cfg.model.architecture in models.__dict__ 
@@ -107,6 +109,8 @@ def main(cfg):
         backbone_embed_dim = image_backbone.num_features
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
+    
+    accelerator.print("image_backbone initialized")
 
     image_feature_comb = models.FeatureVisionTransformer(
         patch_dim=backbone_embed_dim,
