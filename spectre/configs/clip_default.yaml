@@ -1,9 +1,8 @@
 train:
   batch_size_per_gpu: 1024
   grad_accum_steps: 1
-  datasets: [
-    ct_rate
-  ]
+  datasets:
+  - ct_rate
   data_dir: C:\Users\20195435\Documents\TUe\SPECTRE
   output_dir: .
   saveckp_freq: 20

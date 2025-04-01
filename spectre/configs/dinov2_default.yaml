@@ -1,15 +1,14 @@
 train:
   batch_size_per_gpu: 1024
   grad_accum_steps: 1
-  datasets: [
-    ct_rate,
-    inspect,
-    merlin,
-    nlst,
-    abdomen_atlas,
-    panorama,
-    abdomenct_1k,
-  ]
+  datasets:
+  - ct_rate
+  - inspect
+  - merlin
+  - nlst
+  - abdomen_atlas
+  - panorama
+  - abdomenct_1k
   data_dir: ./datasets
   output_dir: .
   saveckp_freq: 20
