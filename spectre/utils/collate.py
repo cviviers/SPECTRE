@@ -101,8 +101,6 @@ def extended_collate_siglip(
         padding=True,
     )
     
-    print("tokenizer_output", tokenizer_output)
-    
     collated_data["input_ids"] = torch.tensor(tokenizer_output["input_ids"])
     collated_data["attention_mask"] = torch.tensor(tokenizer_output["attention_mask"])
 
