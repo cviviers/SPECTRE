@@ -8,50 +8,19 @@ from monai.transforms import (
     Orientationd,
     Spacingd,
     ResizeWithPadOrCropd,
+    MapTransform,
+    RandomizableTransform,
 )
+from monai.config import KeysCollection
 
 from spectre.transforms import SWSpatialCropSamplesd
-from monai.transforms.transform import MapTransform, RandomizableTransform
-from monai.transforms import Transform
-from monai.config import DtypeLike, KeysCollection, SequenceStr
-
-from transformers import AutoTokenizer
-class CLIPTransform(Compose):
-    def __init__(
-            self, 
-            input_size: Tuple[int, int, int] = (128, 128, 64),
-        ):
-        super().__init__(
-            [
-                LoadImaged(keys=("image",)),
-                EnsureChannelFirstd(keys=("image",), channel_dim="no_channel"),
-                ScaleIntensityRanged(
-                    keys=("image",), 
-                    a_min=-1000, 
-                    a_max=1000, 
-                    b_min=0.0, 
-                    b_max=1.0, 
-                    clip=True
-                ),
-                Orientationd(keys=("image",), axcodes="RAS"),
-                Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
-                ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, 256)),
-                
-                # Crop the volume into equal non-overlapping samples
-                SWSpatialCropSamplesd(
-                    keys=("image",),
-                    patch_size=input_size,
-                    overlap=0.0,
-                )
-            ]
-        )
 
 
 class SigLIPTransform(Compose):
     def __init__(
-            self, 
-            input_size: Tuple[int, int, int] = (128, 128, 64),
-        ):
+        self, 
+        input_size: Tuple[int, int, int] = (128, 128, 64),
+    ):
         super().__init__(
             [
                 LoadImaged(keys=("image",)),
@@ -76,9 +45,11 @@ class SigLIPTransform(Compose):
                 ),
 
                 # load the text data
-                GenerateReportTransform(keys=("findings", "impressions", "icd10"), icd10_range_lower=0.1, likelyhood_original=0.5),
-                # TokenizeTransform(keys=("image", "report"))
-
+                GenerateReportTransform(
+                    keys=("findings", "impressions", "icd10"), 
+                    icd10_range_lower=0.1, 
+                    likelyhood_original=0.5
+                ),
             ]
         )
 
@@ -89,7 +60,7 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
         keys: KeysCollection,
         icd10_range_lower=1.0,
         likelyhood_original=0.5,
-        allow_missing_keys: bool = False
+        allow_missing_keys: bool = False,
     ):
         """
         Args:
@@ -153,49 +124,3 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
         
         data["report"] = report
         return data
-    
-class TokenizeTransform(MapTransform):
-    
-    def __init__(self, keys: KeysCollection, tokenizer_name=None, text_key="report"):
-
-        self.keys = keys
-        if tokenizer_name is None:
-            tokenizer_name = "infgrad/jasper_en_vision_language_v1"
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
-        self.text_key = text_key 
-    def __call__(self, data):
-        
-        tokenizer_output = self.tokenizer(
-            str(data[self.text_key]), add_special_tokens=True
-        )
-        print("text", str(data[self.text_key]))
-        print("tokenizer_output", tokenizer_output)
-        data["input_ids"] = tokenizer_output["input_ids"]
-        data["attention_mask"] = tokenizer_output["attention_mask"]
-        return data
-
-
-
-
-if __name__ == "__main__":
-
-    # Save some example data after transforming it.
-    import os
-    import SimpleITK as sitk
-
-    data = {"image": r"data/test_data/train_1_a_1.nii.gz"}
-    transform = CLIPTransform()
-    transformed_data = transform(data)
-
-    # Save the different crops to a folder for visualization.
-    output_dir = r"data/test_data/clip_transform_output"
-    os.makedirs(output_dir, exist_ok=True)
-
-    for i, patch in enumerate(transformed_data):
-
-        # Save the crops
-        patch_img = sitk.GetImageFromArray(patch["image"].squeeze(0).numpy())
-        patch_img.SetSpacing((1.5, 0.75, 0.75))
-        patch_path = os.path.join(output_dir, f"{i}_crop.nii.gz")
-        sitk.WriteImage(patch_img, patch_path)
-

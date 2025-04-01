@@ -1,5 +1,5 @@
 from spectre.data import CTRateDataset, MerlinDataset, VisionLanguageDataset
-from spectre.ssl.transforms.clip_transform import GenerateReportTransform
+from spectre.ssl.transforms.siglip_transform import GenerateReportTransform
 import os
 
 if __name__ == "__main__":

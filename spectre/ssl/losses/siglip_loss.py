@@ -4,7 +4,14 @@ import torch.nn.functional as F
 
 
 class SigLIPLoss(nn.Module):
-    def __init__(self, learnable_t=True, learnable_b=True, normalize=True, init_t=1.0, init_b=0.0):
+    def __init__(
+        self, 
+        learnable_t: bool = True, 
+        learnable_b: bool = True, 
+        normalize: bool = True, 
+        init_t: float = 1.0, 
+        init_b: float = 0.0,
+    ):
         """
         SigLip loss for aligning image and text embeddings.
 
@@ -22,7 +29,7 @@ class SigLIPLoss(nn.Module):
         self.t = nn.Parameter(torch.tensor(init_t)) if learnable_t else init_t
         self.b = nn.Parameter(torch.tensor(init_b)) if learnable_b else init_b
 
-    def forward(self, zimg, ztxt):
+    def forward(self, zimg: torch.Tensor, ztxt: torch.Tensor) -> torch.Tensor:
         """
         Computes the alignment loss between image and text embeddings.
 
