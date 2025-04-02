@@ -33,10 +33,7 @@ class MAETransform(Compose):
                 ),
                 Orientationd(keys=("image",), axcodes="RAS"),
                 Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
-                ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, 256)),
-
-                # Take equal amount of crops from the same subject as could 
-                # be taken without overlap to avoid data-loading overhead
+                ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, -1)),
                 RandSpatialCropSamplesd(
                     keys=("image",),
                     roi_size=input_size,
