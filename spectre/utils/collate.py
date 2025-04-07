@@ -86,7 +86,7 @@ def extended_collate_siglip(
     Applies MONAI's list_data_collate first and then extends it with tokenization logic.
     
     Args:
-        samples_list: List of samples containing 'global_crops' and 'local_crops'.
+        samples_list: List of samples containing 'image' and 'report'.
         tokenizer: Tokenizer function to apply on the reports.
     
     Returns:
@@ -94,6 +94,9 @@ def extended_collate_siglip(
     """
     # Apply MONAI's list_data_collate
     collated_data = list_data_collate(samples_list)
+
+    print(f"Collated data: {collated_data}")
+    print(len(collated_data))
 
     tokenizer_output = tokenizer.batch_encode_plus(
         collated_data["report"], 
