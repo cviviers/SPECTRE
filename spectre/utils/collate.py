@@ -83,7 +83,7 @@ def extended_collate_siglip(
     tokenizer: Optional[Callable] = None,
 ) -> dict:
     """
-    Applies MONAI's list_data_collate first and then extends it with tokenization logic.
+    Applies SigLIP collate and then extends it with tokenization logic.
     
     Args:
         samples_list: List of samples containing 'image' and 'report'.
@@ -92,14 +92,10 @@ def extended_collate_siglip(
     Returns:
         A dictionary with collated images and tokenized text.
     """
-    # Apply MONAI's list_data_collate
-    print(len(samples_list))
-    print(len(samples_list[0]))
-    print(samples_list[0])
-
-    collated_data = list_data_collate(samples_list)
-
-    print(collated_data["image"].shape)
+    # [B][N][C, H, W, D] --> [B, N, C, H, W, D]
+    collated_data = dict()
+    collated_data["image"] = torch.stack([torch.stack(sample, dim=0) for sample in samples_list], dim=0)
+    collated_data["report"] = [sample[0]["report"] for sample in samples_list]
 
     tokenizer_output = tokenizer.batch_encode_plus(
         collated_data["report"], 
