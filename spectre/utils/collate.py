@@ -95,8 +95,7 @@ def extended_collate_siglip(
     # Apply MONAI's list_data_collate
     collated_data = list_data_collate(samples_list)
 
-    print(f"Collated data: {collated_data}")
-    print(len(collated_data))
+    print(collated_data["image"].shape)
 
     tokenizer_output = tokenizer.batch_encode_plus(
         collated_data["report"], 
