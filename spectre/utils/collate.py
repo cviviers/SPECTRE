@@ -94,7 +94,7 @@ def extended_collate_siglip(
     """
     # [B][N][C, H, W, D] --> [B, N, C, H, W, D]
     collated_data = dict()
-    collated_data["image"] = torch.stack([torch.stack(sample, dim=0) for sample in samples_list], dim=0)
+    collated_data["image"] = torch.stack([torch.stack(sample["image"], dim=0) for sample in samples_list], dim=0)
     collated_data["report"] = [sample[0]["report"] for sample in samples_list]
 
     tokenizer_output = tokenizer.batch_encode_plus(
