@@ -129,7 +129,10 @@ def main(cfg):
     
     text_config = models.Qwen2Config.from_pretrained(cfg.model.text_encoder_config)
     text_backbone_embed_dim = text_config.hidden_size
-    text_backbone = models.Qwen2Model(config=text_config)
+    text_backbone = models.Qwen2Model.from_pretrained(
+        cfg.model.text_encoder_weights,
+        config=text_config
+    )
 
     # Initialize the SigLIP model
     model = SigLIP(
