@@ -137,7 +137,7 @@ def main(cfg):
     
 
     text_backbone = AutoModel.from_pretrained(cfg.model.text_encoder_config,
-                                               trust_remote_code=True).cuda()
+                                               trust_remote_code=True)
     text_backbone_embed_dim = text_backbone.config.hidden_size
 
     # Initialize the SigLIP model
