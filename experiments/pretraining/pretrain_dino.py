@@ -32,7 +32,7 @@ def get_args_parser() -> argparse.ArgumentParser:
         help="path to config file",
     )
     parser.add_argument(
-        "opts",
+        "--opts",
         default=None,
         nargs=argparse.REMAINDER,
         help="command line arguments to override config file",
