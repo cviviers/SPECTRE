@@ -8,6 +8,7 @@ from monai.transforms import (
     ScaleIntensityRanged,
     Orientationd,
     Spacingd,
+    SpatialPadd,
     ResizeWithPadOrCropd,
     RandSpatialCropSamples,
     Resize,
@@ -40,6 +41,7 @@ class DINOTransform(Compose):
                 Orientationd(keys=("image",), axcodes="RAS"),
                 Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
                 ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, -1)),
+                SpatialPadd(keys=("image",), spatial_size=(-1, -1, input_size[2])),
                 DINORandomCropTransformd(
                     keys=("image",),
                     input_size=input_size,

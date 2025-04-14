@@ -7,6 +7,7 @@ from monai.transforms import (
     ScaleIntensityRanged,
     Orientationd,
     Spacingd,
+    SpatialPadd,
     ResizeWithPadOrCropd,
     RandSpatialCropSamplesd,
     RandSpatialCropd,
@@ -34,6 +35,7 @@ class MAETransform(Compose):
                 Orientationd(keys=("image",), axcodes="RAS"),
                 Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
                 ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, -1)),
+                SpatialPadd(keys=("image",), spatial_size=(-1, -1, input_size[2])),
                 RandSpatialCropSamplesd(
                     keys=("image",),
                     roi_size=input_size,
