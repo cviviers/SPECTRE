@@ -141,8 +141,8 @@ def get_dataloader(
                 from spectre.data import AbdomenCT1KCacheDataset
                 datasets_list.append(AbdomenCT1KCacheDataset(**kwargs, cache_dir=cache_dir))
             else:
-                from spectre.data import AbdomenCT1kDataset
-                datasets_list.append(AbdomenCT1kDataset(**kwargs))
+                from spectre.data import AbdomenCT1KDataset
+                datasets_list.append(AbdomenCT1KDataset(**kwargs))
 
         else:
             raise NotImplementedError(f"Dataset {dataset} not implemented.")
