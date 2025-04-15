@@ -18,7 +18,7 @@ class InspectDataset(Dataset):
         include_reports: bool = False, 
         transform: Callable = None,
     ):
-        image_paths = Path(data_dir).glob(os.path.join('inpsect2', "CTPA", "*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join('inspect2', "CTPA", "*.nii.gz"))
         if include_reports:
             import pandas as pd
             text_path = os.path.join(Path(data_dir), "inspect2", "Final_Impressions.xlsx")
@@ -45,7 +45,7 @@ class InspectCacheDataset(CacheDataset):
         include_reports: bool = False, 
         transform: Callable = None,
     ):
-        image_paths = Path(data_dir).glob(os.path.join('inpsect2', "CTPA", "*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join('inspect2', "CTPA", "*.nii.gz"))
         if include_reports:
             import pandas as pd
             text_path = os.path.join(Path(data_dir), "inspect2", "Final_Impressions.xlsx")
