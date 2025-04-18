@@ -3,6 +3,8 @@ wandb
 numpy
 monai
 timm
+pandas
+openpyxl
 accelerate
 omegaconf
 nibabel
