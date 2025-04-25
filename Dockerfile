@@ -7,6 +7,7 @@ RUN pip install -r /app/requirements.txt
 
 COPY spectre /app/spectre
 COPY experiments /app/experiments
+COPY scripts /app/scripts
 
 WORKDIR /app
 ENV PYTHONPATH="${PYTHONPATH}:/app"
