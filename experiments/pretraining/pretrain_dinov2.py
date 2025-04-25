@@ -20,7 +20,7 @@ from spectre.utils.dataloader import get_dataloader
 from spectre.utils.masking import MaskingGenerator
 from spectre.utils.collate import extended_collate_dino
 from spectre.utils.checkpointing import load_state, save_state
-from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule
+from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule, cosine_warmup_schedule
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -153,19 +153,19 @@ def main(cfg):
     )
 
     # Initialize learning rate scheduler
-    lr_scheduler = CosineWarmupScheduler(
-        optimizer,
-        warmup_epochs=cfg.optim.warmup_epochs * len(data_loader),
-        max_epochs=cfg.optim.epochs * len(data_loader),
-        start_value=cfg.optim.lr,
-        end_value=cfg.optim.min_lr,
-    )
+    # lr_scheduler = CosineWarmupScheduler(
+    #     optimizer,
+    #     warmup_epochs=cfg.optim.warmup_epochs * len(data_loader),
+    #     max_epochs=cfg.optim.epochs * len(data_loader),
+    #     start_value=cfg.optim.lr,
+    #     end_value=cfg.optim.min_lr,
+    # )
 
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion_dino, criterion_koleo, criterion_ibot, \
-        optimizer, lr_scheduler = accelerator.prepare(
+        optimizer = accelerator.prepare(
             model, data_loader, criterion_dino, criterion_koleo,
-            criterion_ibot, optimizer, lr_scheduler,
+            criterion_ibot, optimizer,
         )
     
     # Keep unwrapped model for easier access to individual components
@@ -177,7 +177,6 @@ def main(cfg):
             os.path.join(cfg.train.output_dir, "checkpoint.pt"),
             model=unwrapped_model,
             optimizer=optimizer, 
-            lr_scheduler=lr_scheduler,
             criterion_dino=criterion_dino, 
             criterion_koleo=criterion_koleo,
             criterion_ibot=criterion_ibot,
@@ -188,6 +187,7 @@ def main(cfg):
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(data_loader)
+    warmup_num_steps = cfg.optim.warmup_epochs * len(data_loader)
 
     # Start training
     global_step: int = start_epoch * len(data_loader)
@@ -196,6 +196,18 @@ def main(cfg):
         for batch in data_loader:
 
             with accelerator.accumulate(model):
+
+                # Update learning rate
+                lr = cosine_warmup_schedule(
+                    global_step,
+                    max_steps=total_num_steps,
+                    start_value=cfg.optim.lr,
+                    end_value=cfg.optim.min_lr,
+                    warmup_steps=warmup_num_steps,
+                    warmup_start_value=0.0,
+                )
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = lr
 
                 # Update momentum
                 momentum = cosine_schedule(
@@ -216,6 +228,10 @@ def main(cfg):
                     cfg.optim.weight_decay_end,
                 )
                 optimizer.param_groups[0]["weight_decay"] = weight_decay
+
+                # Batch to 32-bit float
+                batch = {k: v.to(torch.float32) if hasattr(v, 'dtype') and v.dtype == torch.float16 else v \
+                         for k, v in batch.items()}
 
                 # Forward pass
                 teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
@@ -280,14 +296,18 @@ def main(cfg):
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
                         f"Loss: {loss.item():8f}, "
-                        f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
+                        f"LR: {lr:.8f}, "
                         f"Weight Decay: {weight_decay:.8f}, "
                         f"Momentum: {momentum:.8f}"
                     )
                     accelerator.log(
                         {
                             "loss": loss.item(),
-                            "lr": lr_scheduler.get_last_lr()[0],
+                            "dino_loss": dino_loss.item(),
+                            "koleo_loss": koleo_loss.item(),
+                            "ibot_loss": ibot_loss.item(),
+                            "epoch": epoch,
+                            "lr": lr,
                             "weight_decay": weight_decay,
                             "momentum": momentum,
                         },
@@ -298,32 +318,19 @@ def main(cfg):
                 optimizer.zero_grad()
 
                 # Update learning rate
-                lr_scheduler.step()
+                # lr_scheduler.step()
 
                 # Update global step
                 global_step += 1
 
         # Save checkpoint
-        save_state(
-            os.path.join(cfg.train.output_dir, "checkpoint.pt"),
-            epoch=epoch,
-            model=unwrapped_model,
-            optimizer=optimizer,
-            lr_scheduler=lr_scheduler,
-            criterion_dino=criterion_dino,
-            criterion_koleo=criterion_koleo,
-            criterion_ibot=criterion_ibot,
-            torch_random_state=torch.random.get_rng_state(),
-            numpy_random_state=tuple(np.random.get_state()),
-            random_random_state=random.getstate(),
-        )
-        if (epoch + 1) % cfg.train.saveckp_freq == 0:
+        if accelerator.is_main_process:
             save_state(
-                os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1: 04}.pt"),
+                os.path.join(cfg.train.output_dir, "checkpoint.pt"),
                 epoch=epoch,
                 model=unwrapped_model,
                 optimizer=optimizer,
-                lr_scheduler=lr_scheduler,
+                # lr_scheduler=lr_scheduler,
                 criterion_dino=criterion_dino,
                 criterion_koleo=criterion_koleo,
                 criterion_ibot=criterion_ibot,
@@ -331,6 +338,21 @@ def main(cfg):
                 numpy_random_state=tuple(np.random.get_state()),
                 random_random_state=random.getstate(),
             )
+            if (epoch + 1) % cfg.train.saveckp_freq == 0:
+                save_state(
+                    os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1: 04}.pt"),
+                    epoch=epoch,
+                    model=unwrapped_model,
+                    optimizer=optimizer,
+                    # lr_scheduler=lr_scheduler,
+                    criterion_dino=criterion_dino,
+                    criterion_koleo=criterion_koleo,
+                    criterion_ibot=criterion_ibot,
+                    torch_random_state=torch.random.get_rng_state(),
+                    numpy_random_state=tuple(np.random.get_state()),
+                    random_random_state=random.getstate(),
+                )
+        accelerator.wait_for_everyone()
     
     # Make sure the trackers are finished before exiting
     accelerator.end_training()

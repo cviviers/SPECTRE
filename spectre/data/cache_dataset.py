@@ -61,6 +61,11 @@ class CacheDataset(PersistentDataset):
                     raise e
 
         _item_transformed = self._pre_transform(deepcopy(item_transformed))  # keep the original hashed
+        
+        # We transform the data to 16-bit float to save space in the cache and RAM.
+        _item_transformed = {k: v.to(torch.float16) if hasattr(v, 'dtype') and v.dtype == torch.float32 else v \
+                             for k, v in _item_transformed.items()}
+        
         if hashfile is None:
             return _item_transformed
         try:
