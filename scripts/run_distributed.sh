@@ -38,7 +38,7 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
-accelerate launch \
+cuda-gdb -ex run --args python -m accelerate.commands.launch \
   --config_file $CONFIG_FILE \
   --num_processes $NUM_PROCESSES \
   --machine_rank $RANK \
