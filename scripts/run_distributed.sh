@@ -3,14 +3,10 @@
 # Login to Weights & Biases
 if [ -n "$WANDB_API_KEY" ]; then
     echo "Logging in to Weights & Biases..."
-    wandb login --relogin
+    wandb login --relogin $WANDB_API_KEY
 else
     echo "No WANDB_API_KEY provided. Skipping Weights & Biases login."
 fi
-
-# Debug: Print all environment variables
-echo "Environment variables:"
-env | sort
 
 # Ensure that required system parameters are set, or exit with an error.
 : "${MASTER_ADDR:?MASTER_ADDR is required}"
@@ -38,7 +34,7 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
-cuda-gdb -ex run --args python -m accelerate.commands.launch \
+cuda-gdb -ex run --args python -u -m accelerate.commands.launch \
   --config_file $CONFIG_FILE \
   --num_processes $NUM_PROCESSES \
   --machine_rank $RANK \
