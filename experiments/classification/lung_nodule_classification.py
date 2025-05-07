@@ -131,7 +131,7 @@ def main(cfg):
         msg = model.load_state_dict(torch.load(cfg.model.pretrained_weights), strict=False)
         accelerator.print(f"Pretrained weights loaded with message: {msg}")
         if cfg.model.linear_only:
-            for name, param in model.parameters():
+            for name, param in model.named_parameters():
                 if name not in ["fc.weight", "fc.bias", "head.weight", "head.bias"]:
                     param.requires_grad = False
 
