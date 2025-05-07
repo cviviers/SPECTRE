@@ -18,8 +18,8 @@ class CacheDataset(PersistentDataset):
     """
     Overwrite MONAI's PersistentDataset to support PyTorch 2.6.
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, pickle_protocol=pickle.HIGHEST_PROTOCOL, **kwargs):
+        super().__init__(*args, pickle_protocol=pickle_protocol, **kwargs)
     
     def _cachecheck(self, item_transformed):
         """
@@ -62,10 +62,6 @@ class CacheDataset(PersistentDataset):
 
         _item_transformed = self._pre_transform(deepcopy(item_transformed))  # keep the original hashed
         
-        # We transform the data to 16-bit float to save space in the cache and RAM.
-        _item_transformed = {k: v.to(torch.float16) if hasattr(v, 'dtype') and v.dtype == torch.float32 else v \
-                             for k, v in _item_transformed.items()}
-        
         if hashfile is None:
             return _item_transformed
         try:
@@ -89,4 +85,4 @@ class CacheDataset(PersistentDataset):
                         pass
         except PermissionError:  # project-monai/monai issue #3613
             pass
-        return _item_transformed    
+        return _item_transformed

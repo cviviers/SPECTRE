@@ -7,7 +7,7 @@ from functools import partial
 import numpy as np
 import torch
 from torch.optim import AdamW
-from accelerate import Accelerator
+from accelerate import Accelerator, DataLoaderConfiguration
 
 import spectre.models as models
 from spectre.ssl.frameworks import DINOv2
@@ -20,7 +20,7 @@ from spectre.utils.dataloader import get_dataloader
 from spectre.utils.masking import MaskingGenerator
 from spectre.utils.collate import extended_collate_dino
 from spectre.utils.checkpointing import load_state, save_state
-from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule, cosine_warmup_schedule
+from spectre.utils.scheduler import cosine_schedule, cosine_warmup_schedule
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -58,9 +58,13 @@ def main(cfg):
         cfg: Configuration object containing all hyperparameters and settings.
     """
     # Initialize accelerator
+    dataloader_config = DataLoaderConfiguration(
+        non_blocking=cfg.train.pin_memory,
+    )
     accelerator = Accelerator(
         gradient_accumulation_steps=cfg.train.grad_accum_steps,
         log_with="wandb" if cfg.train.log_wandb else None,
+        dataloader_config=dataloader_config,
     )
 
     # Print config
@@ -111,7 +115,9 @@ def main(cfg):
         include_labels=False,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
-        transform=DINOTransform(),
+        transform=DINOTransform(
+            dtype="float16" if cfg.train.load_fp16 else "float32",
+        ),
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
         pin_memory=cfg.train.pin_memory,
@@ -234,10 +240,6 @@ def main(cfg):
                 )
                 optimizer.param_groups[0]["weight_decay"] = weight_decay
 
-                # Batch to 32-bit float
-                # batch = {k: v.to(torch.float32) if hasattr(v, 'dtype') and v.dtype == torch.float16 else v \
-                #          for k, v in batch.items()}
-
                 # Forward pass
                 teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
                     global_crops=batch["global_crops"].as_tensor(), 
@@ -341,7 +343,7 @@ def main(cfg):
             )
             if (epoch + 1) % cfg.train.saveckp_freq == 0:
                 save_state(
-                    os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1: 04}.pt"),
+                    os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
                     epoch=epoch,
                     model=unwrapped_model,
                     optimizer=optimizer,
