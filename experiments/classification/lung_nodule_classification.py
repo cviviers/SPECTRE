@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
-from accelerate import Accelerator
+from accelerate import Accelerator, DataLoaderConfiguration
 from torch.optim import AdamW
 from torch.utils.data import Dataset, Subset
 from monai.data import MetaTensor, DataLoader
@@ -59,9 +59,13 @@ def get_args_parser() -> argparse.ArgumentParser:
 def main(cfg):
 
     # Initialize accelerator
+    dataloader_config = DataLoaderConfiguration(
+        non_blocking=True,
+    )
     accelerator = Accelerator(
         gradient_accumulation_steps=cfg.train.grad_accum_steps,
         log_with="wandb" if cfg.train.log_wandb else None,
+        dataloader_config=dataloader_config,
     )
 
     # Print config
@@ -96,13 +100,15 @@ def main(cfg):
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
         pin_memory=True,
+        persistent_workers=True,
         shuffle=True,
     )
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=cfg.train.batch_size_per_gpu,
-        num_workers=cfg.train.num_workers,
+        num_workers=1,
         pin_memory=True,
+        persistent_workers=True,
         shuffle=False,
     )
     
