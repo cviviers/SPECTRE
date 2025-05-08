@@ -230,17 +230,16 @@ def main(cfg):
 
         # Evaluate model
         model.eval()
-        predictions = torch.tensor([])
-        labels = torch.tensor([])
-        val_loss = torch.tensor([0.], device=accelerator.device)
+        predictions = torch.tensor([], device=accelerator.device)
+        labels = torch.tensor([], device=accelerator.device)
         val_steps = 0.
         with torch.no_grad():
             for batch in val_dataloader:
                 output = model(batch["image"])
 
                 # Keep all outputs for later analysis
-                predictions = torch.cat((predictions, output.detach().cpu()), dim=0)
-                labels = torch.cat((labels, batch["label"].cpu()), dim=0)
+                predictions = torch.cat((predictions, output.detach()), dim=0)
+                labels = torch.cat((labels, batch["label"]), dim=0)
 
             # Get predictions and labels form all devices
             predictions = accelerator.gather(predictions)
@@ -249,7 +248,7 @@ def main(cfg):
             val_loss = criterion(predictions, labels)
             val_loss = val_loss.item()
 
-            val_auc = compute_roc_auc(predictions, labels)[0]
+            val_auc = compute_roc_auc(predictions.cpu(), labels.cpu())[0]
             
             accelerator.print(f"Validation loss: {val_loss}")
             accelerator.print(f"Validation AUC: {val_auc}")
