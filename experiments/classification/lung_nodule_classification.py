@@ -232,7 +232,7 @@ def main(cfg):
         model.eval()
         predictions = torch.tensor([], device=accelerator.device)
         labels = torch.tensor([], device=accelerator.device)
-        val_steps = 0.
+        best_auc: float = 0.0
         with torch.no_grad():
             for batch in val_dataloader:
                 output = model(batch["image"])
@@ -241,29 +241,30 @@ def main(cfg):
                 predictions = torch.cat((predictions, output.detach()), dim=0)
                 labels = torch.cat((labels, batch["label"]), dim=0)
 
-            # Get predictions and labels form all devices
-            predictions = accelerator.gather(predictions)
-            labels = accelerator.gather(labels)
+        # Get predictions and labels form all devices
+        predictions = accelerator.gather(predictions)
+        labels = accelerator.gather(labels)
             
-            val_loss = criterion(predictions, labels)
-            val_loss = val_loss.item()
+        val_loss = criterion(predictions, labels)
+        val_loss = val_loss.item()
 
-            val_auc = compute_roc_auc(predictions.cpu(), labels.cpu())
+        val_auc = compute_roc_auc(predictions.cpu(), labels.cpu())
             
-            accelerator.print(f"Validation loss: {val_loss}")
-            accelerator.print(f"Validation AUC: {val_auc}")
-            accelerator.log({
-                "val_loss": val_loss,
-                "val_auc": val_auc,
-            }, step=global_step - 1)
+        accelerator.print(f"Validation loss: {val_loss:.4f}")
+        accelerator.print(f"Validation AUC: {val_auc:.4f}")
+        accelerator.log({
+            "val_loss": val_loss,
+            "val_auc": val_auc,
+        }, step=global_step - 1)
 
-        if (epoch + 1) % cfg.train.saveckp_freq == 0 or (epoch + 1) == cfg.optim.epochs:
-            accelerator.save_model(
-                model,
-                os.path.join(
-                    cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}"
-                ),
-            )
+        if val_auc > best_auc:
+            best_auc = val_auc
+            if accelerator.is_main_process:
+                torch.save(
+                    unwrapped_model.state_dict(), 
+                    os.path.join(cfg.train.output_dir, f"best_model-epoch={epoch + 1:04}.pth")
+                )
+        accelerator.wait_for_everyone()
 
     # Make sure the trackers are finished before exiting
     accelerator.end_training()
