@@ -26,7 +26,7 @@ from monai.transforms import (
 import spectre.models as models
 from spectre.utils.config import setup
 from spectre.configs import load_config
-from spectre.utils.scheduler import CosineWarmupScheduler
+from spectre.utils.scheduler import cosine_warmup_schedule
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -99,16 +99,18 @@ def main(cfg):
         train_dataset,
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
-        pin_memory=True,
-        persistent_workers=True,
+        pin_memory=cfg.train.pin_memory,
+        persistent_workers=cfg.train.persistent_workers,
+        drop_last=cfg.train.drop_last,
         shuffle=True,
     )
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=1,
-        pin_memory=True,
-        persistent_workers=True,
+        pin_memory=cfg.train.pin_memory,
+        persistent_workers=cfg.train.persistent_workers,
+        drop_last=cfg.train.drop_last,
         shuffle=False,
     )
     
@@ -151,23 +153,13 @@ def main(cfg):
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
 
-    # Initialize learning rate scheduler
-    lr_scheduler = CosineWarmupScheduler(
-        optimizer,
-        warmup_epochs=cfg.optim.warmup_epochs * len(train_dataloader),
-        max_epochs=cfg.optim.epochs * len(train_dataloader),
-        start_value=cfg.optim.lr,
-        end_value=cfg.optim.min_lr,
-    )
-
     # Prepare model, data, and optimizer for training
-    model, train_dataloader, val_dataloader, criterion, optimizer, lr_scheduler = accelerator.prepare(
+    model, train_dataloader, val_dataloader, criterion, optimizer = accelerator.prepare(
         model,
         train_dataloader,
         val_dataloader,
         criterion,
         optimizer,
-        lr_scheduler,
     )
 
     # Keep unwrapped model for easier access to individual components
@@ -176,6 +168,7 @@ def main(cfg):
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(train_dataloader)
+    warmup_num_steps = cfg.optim.warmup_epochs * len(train_dataloader)
 
     # Start training
     global_step: int = 0
@@ -184,6 +177,18 @@ def main(cfg):
         for batch in train_dataloader:
 
             with accelerator.accumulate(model):
+
+                # Update learning rate
+                lr = cosine_warmup_schedule(
+                    global_step,
+                    max_steps=total_num_steps,
+                    start_value=cfg.optim.lr,
+                    end_value=cfg.optim.min_lr,
+                    warmup_steps=warmup_num_steps,
+                    warmup_start_value=0.0,
+                )
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = lr
 
                 # Forward pass
                 output = model(batch["image"])
@@ -206,21 +211,18 @@ def main(cfg):
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
                         f"Loss: {loss.item():8f}, "
-                        f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
+                        f"LR: {lr}, "
                     )
                     accelerator.log(
                         {
                             "loss": loss.item(),
-                            "lr": lr_scheduler.get_last_lr()[0],
+                            "lr": lr,
                         },
                         step=global_step,
                     )
                 
                 # Zero gradients
                 optimizer.zero_grad()
-
-                # Update learning rate
-                lr_scheduler.step()
 
                 # Update global step
                 global_step += 1
