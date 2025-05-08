@@ -248,7 +248,7 @@ def main(cfg):
             val_loss = criterion(predictions, labels)
             val_loss = val_loss.item()
 
-            val_auc = compute_roc_auc(predictions.cpu(), labels.cpu())[0]
+            val_auc = compute_roc_auc(predictions.cpu(), labels.cpu())
             
             accelerator.print(f"Validation loss: {val_loss}")
             accelerator.print(f"Validation AUC: {val_auc}")
