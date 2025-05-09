@@ -262,7 +262,7 @@ def main(cfg):
             if accelerator.is_main_process:
                 torch.save(
                     unwrapped_model.state_dict(), 
-                    os.path.join(cfg.train.output_dir, f"best_model-epoch={epoch + 1:04}.pth")
+                    os.path.join(cfg.train.output_dir, f"best_model.pt")
                 )
         accelerator.wait_for_everyone()
 
@@ -353,8 +353,8 @@ class LUNA25PatchTransform(Compose):
             EnsureChannelFirst(channel_dim="no_channel"),
             ScaleIntensityRange(a_min=-1000, a_max=1000, b_min=0.0, b_max=1.0, clip=True),
             Spacing(pixdim=(0.75, 0.75, 1.5), mode="trilinear", lazy=True),
-            RandRotate(range_x=math.pi, range_y=math.pi, range_z=math.pi, prob=0.5, lazy=True),
-            RandAxisFlip(prob=0.5, lazy=True),
+            # RandRotate(range_x=math.pi, range_y=math.pi, range_z=math.pi, prob=0.5, lazy=True),
+            # RandAxisFlip(prob=0.5, lazy=True),
             ResizeWithPadOrCrop((128, 128, 64)),
         ])
 
