@@ -8,6 +8,7 @@ train:
   data_dir: /data/
   output_dir: .
   saveckp_freq: 20
+  resume_ckp: true
   seed: 0
   num_workers: 10
   load_fp16: true
@@ -20,7 +21,7 @@ train:
   log_freq: 1
 optim:
   epochs: 100
-  base_lr: 0.004
+  base_lr: 0.0001
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 10
   min_lr: 1.0e-06
@@ -34,8 +35,8 @@ model:
   feature_comb_embed_dim: 768
   feature_comb_num_layers: 4
   feature_comb_num_heads: 12
-  text_tokenizer: infgrad/jasper_en_vision_language_v1
-  text_encoder: infgrad/jasper_en_vision_language_v1
+  text_tokenizer: NovaSearch/stella_en_1.5B_v5
+  text_encoder_weights: /data/checkpoints/NovaSearch/stella_en_1.5B_v5/model.safetensors
   projection_dim: 2048
   learnable_t: true
   learnable_b: true
