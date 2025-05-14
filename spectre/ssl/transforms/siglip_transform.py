@@ -128,12 +128,5 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
             # Add ICD10 codes to the report.
             report += f"ICD10: {', '.join(selected_icd10)}\n"
         
-        # Construct the final report string.
-        # report = (
-        #     f"Findings: {selected_finding}\n"
-        #     f"Impressions: {selected_impression}\n"
-        #     f"ICD10: {', '.join(selected_icd10) if selected_icd10 else ''}"
-        # )
-        
         data["report"] = report
         return data
