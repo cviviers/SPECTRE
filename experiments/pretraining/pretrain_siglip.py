@@ -1,6 +1,7 @@
 import os
 import random
 import argparse
+from itertools import chain
 from functools import partial
 
 import torch
@@ -173,7 +174,11 @@ def main(cfg, accelerator: Accelerator):
 
     # Initialize optimizer
     optimizer = AdamW(
-        model.parameters(),
+        chain(
+            model.parameters(),
+            criterion.parameters(),
+        ) if cfg.model.learnable_t or cfg.model.learnable_b else \
+            model.parameters(),
         lr=cfg.optim.lr,
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
@@ -226,6 +231,10 @@ def main(cfg, accelerator: Accelerator):
                 image_embeddings, text_embeddings = model(
                     batch['image'], batch['input_ids'], batch['attention_mask']
                 )
+
+                # Get outputs fromn all devices
+                image_embeddings = accelerator.gather(image_embeddings)
+                text_embeddings = accelerator.gather(text_embeddings)
 
                 loss = criterion(image_embeddings, text_embeddings)
 
