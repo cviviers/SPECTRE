@@ -21,11 +21,11 @@ train:
   log_freq: 1
 optim:
   epochs: 100
-  base_lr: 0.0001
+  base_lr: 1.0e-05
   lr: 0.  # will be set after applying scaling rule
-  warmup_epochs: 10
-  min_lr: 1.0e-06
-  clip_grad_norm: 3.0
+  warmup_epochs: 0
+  min_lr: 1.0e-08
+  clip_grad_norm: 1.0
   scaling_rule: sqrt_wrt_1024
   adamw_beta1: 0.9
   adamw_beta2: 0.95
@@ -37,7 +37,7 @@ model:
   feature_comb_num_heads: 12
   text_tokenizer: NovaSearch/stella_en_1.5B_v5
   text_encoder_weights: /data/checkpoints/NovaSearch/stella_en_1.5B_v5/model.safetensors
-  projection_dim: 2048
+  projection_dim: 4096
   learnable_t: true
   learnable_b: true
   init_t: 1.0
