@@ -48,7 +48,6 @@ class SigLIP(nn.Module):
         images: torch.Tensor,
         text_tokens: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        output_dir: str = None,
     ):
         """
         Args:
@@ -72,18 +71,6 @@ class SigLIP(nn.Module):
 
         # Compute text embeddings
         text_embeddings = self.text_backbone(input_ids=text_tokens, attention_mask=attention_mask)
-        if torch.any(torch.isnan(text_embeddings.last_hidden_state)):
-            print("NaN detected in text embeddings before masking.")
-            if output_dir is not None:
-                out_path = os.path.join(output_dir, "embeddings_nan.pt")
-                print(f"Saving text embeddings and model to {out_path}")
-                torch.save({
-                    "input_ids": text_tokens, 
-                    "attention_mask": attention_mask,
-                    "model": self.text_backbone.state_dict(),
-                    "text_embeddings": text_embeddings.last_hidden_state,
-                }, out_path)
-            raise ValueError("NaN detected in text embeddings before masking.")
         text_embeddings = text_embeddings.last_hidden_state.masked_fill(~attention_mask[..., None].bool(), 0.0)
         text_embeddings = text_embeddings.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
         text_embeddings = self.text_projection(text_embeddings) # (batch, embed_dim)
