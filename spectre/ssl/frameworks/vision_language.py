@@ -84,8 +84,7 @@ class SigLIP(nn.Module):
                     "text_embeddings": text_embeddings.last_hidden_state,
                 }, out_path)
             raise ValueError("NaN detected in text embeddings before masking.")
-        text_embeddings = text_embeddings.last_hidden_state.masked_fill(~attention_mask[..., None].bool(), 0.0)
-        text_embeddings = text_embeddings.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
-        text_embeddings = self.text_projection(text_embeddings) # (batch, embed_dim)
+        
+        text_embeddings = self.text_projection(text_embeddings.pooler_output) # (batch, embed_dim)
 
         return image_embeddings, text_embeddings
