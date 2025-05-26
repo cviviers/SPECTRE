@@ -239,7 +239,7 @@ def main(cfg, accelerator: Accelerator):
                         f"Loss: {loss.item():8f}, "
                         f"LR: {lr:.8f}, "
                         f"Weight Decay: {weight_decay:.8f}, "
-                        f"Momentum: {momentum:.8f}"
+                        f"Momentum: {momentum:.8f}, "
                         f"Step Time: {step_time:.4f}s, "
                         f"Epoch Time: {epoch_time:.4f}s"
                     )
