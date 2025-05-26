@@ -1,5 +1,6 @@
 import os
 import random
+import time
 import argparse
 from itertools import chain
 from functools import partial
@@ -160,9 +161,10 @@ def main(cfg, accelerator: Accelerator):
     # Start training
     global_step: int = start_epoch * len(data_loader)
     for epoch in range(start_epoch, cfg.optim.epochs):
+        epoch_start_time = time.time()
         model.train()
         for batch in data_loader:
-
+            step_start_time = time.time()
             with accelerator.accumulate(model):
 
                 # Update learning rate
@@ -226,9 +228,11 @@ def main(cfg, accelerator: Accelerator):
 
                 unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
                 optimizer.step()
-
+                
                 # Log loss, lr, and weight decay
                 if global_step % cfg.train.log_freq == 0:
+                    step_time= time.time() - step_start_time
+                    epoch_time = time.time() - epoch_start_time
                     accelerator.print(
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
@@ -236,6 +240,8 @@ def main(cfg, accelerator: Accelerator):
                         f"LR: {lr:.8f}, "
                         f"Weight Decay: {weight_decay:.8f}, "
                         f"Momentum: {momentum:.8f}"
+                        f"Step Time: {step_time:.4f}s, "
+                        f"Epoch Time: {epoch_time:.4f}s"
                     )
                     accelerator.log(
                         {
@@ -244,6 +250,8 @@ def main(cfg, accelerator: Accelerator):
                             "lr": lr,
                             "weight_decay": weight_decay,
                             "momentum": momentum,
+                            "step_time": step_time,
+                            "epoch_time": epoch_time,
                         },
                         step=global_step,
                     )
