@@ -57,6 +57,9 @@ class CacheDataset(PersistentDataset):
                 if "Invalid magic number; corrupt file" in str(e):
                     warnings.warn(f"Corrupt cache file detected: {hashfile}. Deleting and recomputing.")
                     hashfile.unlink()
+                elif "PytorchStreamReader failed reading zip archive: failed finding central directory" in str(e):
+                    warnings.warn(f"Corrupt cache file detected: {hashfile}. Deleting and recomputing.")
+                    hashfile.unlink()
                 else:
                     raise e
 
