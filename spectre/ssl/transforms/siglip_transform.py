@@ -11,6 +11,7 @@ from monai.transforms import (
     Spacingd,
     ResizeWithPadOrCropd,
     CastToTyped,
+    RandSpatialCropd,
     MapTransform,
     Randomizable,
 )
@@ -26,6 +27,11 @@ class SigLIPTransform(Compose):
         dtype: str = "float32",
     ):
         assert dtype in ["float16", "float32"], "dtype must be either 'float16' or 'float32'"
+        global_size = (
+            384 + input_size[0],
+            384 + input_size[1],
+            256 + input_size[2],
+        )
         super().__init__(
             [
                 LoadImaged(keys=("image",)),
@@ -40,10 +46,16 @@ class SigLIPTransform(Compose):
                 ),
                 Orientationd(keys=("image",), axcodes="RAS"),
                 Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
-                ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, 256)),
+                ResizeWithPadOrCropd(keys=("image",), spatial_size=global_size),
                 CastToTyped(keys=("image",), dtype=getattr(torch, dtype)),
                 
                 # Crop the volume into equal non-overlapping samples
+                RandSpatialCropd(
+                    keys=("image",),
+                    roi_size=(384, 384, 256),
+                    random_size=False,
+                    random_center=True,
+                ),
                 SWSpatialCropSamplesd(
                     keys=("image",),
                     patch_size=input_size,
@@ -100,13 +112,19 @@ class GenerateReportTransform(Randomizable, MapTransform):
 
         if not self.drop_findings and findings:
             num_elements = len(findings)
-            weights = [self.likelyhood_original] + [(1 - self.likelyhood_original) / (num_elements - 1)] * (num_elements - 1)
-            self.finding_idx = int(self.R.choice(np.arange(num_elements), p=weights))
+            if num_elements == 1:
+                self.finding_idx = 0
+            else:
+                weights = [self.likelyhood_original] + [(1 - self.likelyhood_original) / (num_elements - 1)] * (num_elements - 1)
+                self.finding_idx = int(self.R.choice(np.arange(num_elements), p=weights))
 
         if impressions:
             num_elements = len(impressions)
-            weights = [self.likelyhood_original] + [(1 - self.likelyhood_original) / (num_elements - 1)] * (num_elements - 1)
-            self.impression_idx = int(self.R.choice(np.arange(num_elements), p=weights))
+            if num_elements == 1:
+                self.impression_idx = 0
+            else:
+                weights = [self.likelyhood_original] + [(1 - self.likelyhood_original) / (num_elements - 1)] * (num_elements - 1)
+                self.impression_idx = int(self.R.choice(np.arange(num_elements), p=weights))
 
         if not self.drop_icd10 and icd10_codes:
             num_codes = min(self.max_num_icd10, len(icd10_codes))
