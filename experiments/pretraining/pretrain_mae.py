@@ -125,6 +125,9 @@ def main(cfg, accelerator: Accelerator):
         )
     else:
         start_epoch: int = 0
+    if start_epoch > 0:
+        start_epoch += 1
+        accelerator.print(f"Resuming training from epoch {start_epoch}.")
     
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes

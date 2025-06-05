@@ -213,6 +213,9 @@ def main(cfg, accelerator: Accelerator):
         )
     else:
         start_epoch: int = 0
+    if start_epoch > 0:
+        start_epoch += 1
+        accelerator.print(f"Resuming training from epoch {start_epoch}.")
 
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
@@ -223,7 +226,7 @@ def main(cfg, accelerator: Accelerator):
     global_step: int = start_epoch * len(data_loader)
     for epoch in range(start_epoch, cfg.optim.epochs):
         model.train()
-        for batch in data_loader:
+        for batch_num, batch in enumerate(data_loader):
 
             with accelerator.accumulate(model):
 
@@ -256,7 +259,7 @@ def main(cfg, accelerator: Accelerator):
                 accelerator.backward(loss)
 
                 # Set gradients of image and text encoders to zero in first epoch
-                if epoch == 0:
+                if epoch < cfg.optim.freeze_backbone_epochs:
                     for name, param in model.named_parameters():
                         if "image_backbone" in name or "text_backbone" in name:
                             param.grad = None
@@ -291,7 +294,7 @@ def main(cfg, accelerator: Accelerator):
                 global_step += 1
 
         if accelerator.is_main_process:
-            accelerator.save_state(
+            save_state(
                 os.path.join(cfg.train.output_dir, "checkpoint.pt"),
                 epoch=epoch,
                 model=unwrapped_model,
@@ -304,6 +307,7 @@ def main(cfg, accelerator: Accelerator):
             if (epoch + 1) % cfg.train.saveckp_freq == 0:
                 save_state(
                     os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
+                    epoch=epoch,
                     model=unwrapped_model,
                     optimizer=optimizer,
                     criterion=criterion,
