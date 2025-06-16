@@ -299,20 +299,5 @@ def save_embeddings(embeddings, save_paths):
 
 if __name__ == "__main__":
     parser = get_args_parser()
-    args = parser.parse_args(
-        [
-            "--data_dir", r"E:\Datasets\CT-RATE",
-            "--save_dir", r"E:\spectre\results\eval\embeddings_ct_rate\vit-l bge-m3",
-            "--architecture", "vit_large_patch16_128",
-            "--feature_comb_embed_dim", "1024",
-            "--feature_comb_num_layers", "4",
-            "--feature_comb_num_heads", "16",
-            "--projection_dim", "4096",
-            "--image_backbone_weights", r"E:\spectre\checkpoints\siglip\vit-l bge-m3\checkpoint_epoch=0250\image_backbone.pt",
-            "--image_feature_comb_weights", r"E:\spectre\checkpoints\siglip\vit-l bge-m3\checkpoint_epoch=0250\image_feature_comb.pt",
-            "--image_projection_weights", r"E:\spectre\checkpoints\siglip\vit-l bge-m3\checkpoint_epoch=0250\image_projection.pt",
-            "--text_backbone_weights", r"E:\spectre\checkpoints\siglip\vit-l bge-m3\checkpoint_epoch=0250\text_backbone.pt",
-            "--text_projection_weights", r"E:\spectre\checkpoints\siglip\vit-l bge-m3\checkpoint_epoch=0250\text_projection.pt",
-        ]
-    )
+    args = parser.parse_args()
     main(args)

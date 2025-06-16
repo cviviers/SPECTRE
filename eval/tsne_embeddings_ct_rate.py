@@ -88,12 +88,5 @@ def main(args):
 
 if __name__ == "__main__":
     parser = get_args_parser()
-    args = parser.parse_args(
-        [
-            "--csv_path", r"E:\Datasets\CT-RATE\dataset\multi_abnormailty_labels\valid_predicted_labels.csv",
-            "--embedding_dir", r"E:\spectre\results\eval\embeddings_ct_rate\vit-l bge-m3",
-            "--embedding_type", "image_projection",
-            "--output_plot", r"E:\spectre\results\eval\embeddings_ct_rate\vit-l bge-m3\tsne_plot.png"
-        ]
-    )
+    args = parser.parse_args()
     main(args)
