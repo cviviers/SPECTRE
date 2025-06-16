@@ -75,3 +75,41 @@ def save_state(
         checkpoint[name] = obj.state_dict()
 
     torch.save(checkpoint, ckpt_path)
+
+
+def clean_components_from_checkpoint(
+    ckpt: dict,
+    components_to_extract: list[str] = [
+        "image_encoder", 
+        "text_encoder", 
+        "image_feature_comb", 
+        "teacher_backbone", 
+        "student_backbone", 
+        "image_projection", 
+        "text_projection"
+    ]) -> dict:
+    """
+    Cleans the model state_dict from a checkpoint by removing unwanted keys.
+
+    Parameters:
+    - ckpt (dict): The checkpoint dictionary containing the model state_dict.
+
+    Returns:
+    - dict: Cleaned state_dict with unwanted keys removed.
+    """
+    if 'model' in ckpt:
+        ckpt = ckpt['model']
+
+    cleaned_state_dict = {}
+
+    for key, value in ckpt.items():
+        for comp in components_to_extract:
+            prefix = comp + "."
+            if key.startswith(prefix):
+                subkey = key[len(prefix):]
+                if comp not in cleaned_state_dict:
+                    cleaned_state_dict[comp] = {}
+                cleaned_state_dict[comp][subkey] = value
+                break  # Stop checking once matched with a component
+
+    return cleaned_state_dict

@@ -81,6 +81,9 @@ def extended_collate_dino(
 def extended_collate_siglip(
     samples_list: List,
     tokenizer: Optional[Callable] = None,
+    tokenizer_padding: bool = True,
+    tokenizer_truncation: bool = True,
+    tokenizer_max_length: int = 1024,
 ) -> dict:
     """
     Applies SigLIP collate and then extends it with tokenization logic.
@@ -92,24 +95,30 @@ def extended_collate_siglip(
     Returns:
         A dictionary with collated images and tokenized text.
     """
-    # [B][N][C, H, W, D] --> [B, N, C, H, W, D]
-    collated_data = dict()
-    collated_data["image"] = torch.stack([
-        torch.stack([
-            s["image"] for s in sample
-        ], dim=0) for sample in samples_list
-    ], dim=0)
-    collated_data["report"] = [sample[0]["report"] for sample in samples_list]
+    images = []
+    reports = []
+    filenames = []
 
-    tokenizer_output = tokenizer.batch_encode_plus(
-        collated_data["report"], 
-        add_special_tokens=True,
-        padding=True,
-        truncation=True,
-        max_length=1024,
-    )
-    
-    collated_data["input_ids"] = torch.tensor(tokenizer_output["input_ids"])
-    collated_data["attention_mask"] = torch.tensor(tokenizer_output["attention_mask"])
+    for sample in samples_list:
+        filenames.append(sample[0]["image"].data.meta["filename_or_obj"])
+        images.append(torch.stack([s["image"] for s in sample], dim=0))
+        reports.append(sample[0]["report"])
+
+    collated_data = dict()
+    collated_data["filename"] = filenames
+    collated_data["image"] = torch.stack(images, dim=0)
+    collated_data["report"] = reports
+
+    if tokenizer is not None:
+        tokenizer_output = tokenizer.batch_encode_plus(
+            collated_data["report"], 
+            add_special_tokens=True,
+            padding=tokenizer_padding,
+            truncation=tokenizer_truncation,
+            max_length=tokenizer_max_length,
+        )
+        
+        collated_data["input_ids"] = torch.tensor(tokenizer_output["input_ids"])
+        collated_data["attention_mask"] = torch.tensor(tokenizer_output["attention_mask"])
 
     return collated_data
