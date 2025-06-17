@@ -43,7 +43,11 @@ def main(args):
         emb_path = Path(args.embedding_dir) / filename / f"{args.embedding_type}.npy"
 
         if emb_path.exists():
-            emb = np.load(emb_path)
+            try:
+                emb = np.load(emb_path)
+            except Exception as e:
+                print(f"Error loading {emb_path}: {e}")
+                continue
             if emb.ndim > 1:
                 emb = emb.flatten()
             embeddings.append(emb)
