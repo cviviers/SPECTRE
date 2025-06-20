@@ -11,8 +11,8 @@ class FeatureVisionTransformer(nn.Module):
         depth: int = 4,
         heads: int = 12,
         mlp_dim: int = 3072,
-        dropout: float = 0.1,
-        causal: bool = True
+        dropout: float = 0.,
+        causal: bool = False,
     ):
         """
         A Vision Transformer that accepts already flattened embedding tokens from a previous layer as input 
@@ -37,7 +37,7 @@ class FeatureVisionTransformer(nn.Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
         
         # Learnable positional embeddings for each patch + the cls token.
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.randn(1, num_patches + 1, embed_dim))
         
         self.dropout = nn.Dropout(dropout)
         
@@ -55,6 +55,22 @@ class FeatureVisionTransformer(nn.Module):
         self.norm = nn.LayerNorm(embed_dim)
 
         self.causal = causal
+
+        self.init_weights()
+
+    def init_weights(self) -> None:
+        if self.pos_embed is not None:
+            nn.init.trunc_normal_(self.pos_embed, std=.02)
+        if self.cls_token is not None:
+            nn.init.normal_(self.cls_token, std=1e-6)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m: nn.Module) -> None:
+        # this fn left here for compat with downstream users
+        if isinstance(m, nn.Linear):
+            nn.init.trunc_normal_(m.weight, std=.02)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
 
     def forward(self, patches: torch.Tensor, return_cls_token = True) -> torch.Tensor:
         """
@@ -78,7 +94,7 @@ class FeatureVisionTransformer(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)  # Shape: (b, n+1, embed_dim)
         
         # Add positional embeddings.
-        x = x + self.pos_embedding[:, : x.size(1)]
+        x = x + self.pos_embed[:, : x.size(1)]
         x = self.dropout(x)
         
         # Transformer expects input as (sequence_length, batch, embed_dim)
