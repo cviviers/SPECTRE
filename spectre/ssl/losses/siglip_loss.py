@@ -50,11 +50,20 @@ class SigLIPLoss(nn.Module):
         logits = logits * self.t + self.b  # Apply scaling and bias
 
         batch_size = logits.size(0)
-        eye = torch.eye(batch_size, device=logits.device)  # Identity matrix for positives
+        # eye = torch.eye(batch_size, device=logits.device)  # Identity matrix for positives
 
-        m1_diag1 = -torch.ones_like(logits, device=logits.device) + 2 * eye
-        loglik = F.logsigmoid(m1_diag1 * logits)  # Log sigmoid
-        nll = -torch.sum(loglik, dim=-1)  # Negative log likelihood
-        loss = torch.mean(nll)  # Final mean loss
+        # m1_diag1 = -torch.ones_like(logits, device=logits.device) + 2 * eye
+        # loglik = F.logsigmoid(m1_diag1 * logits)  # Log sigmoid
+        # nll = -torch.sum(loglik, dim=-1)  # Negative log likelihood
+        # loss = torch.mean(nll)  # Final mean loss
+
+        pos_loglik = F.logsigmoid(torch.diag(logits))  # Log sigmoid for positive pairs
+
+        neg_loglik = F.logsigmoid(-logits)  # Log sigmoid for negative pairs
+        neg_loglik.fill_diagonal_(0)  # Set diagonal to zero for negatives
+
+        neg_term = neg_loglik.sum() / (batch_size ** 2 - batch_size)  # Average over negative pairs
+        
+        loss = -pos_loglik.mean() - neg_term  # Combine positive and negative terms
 
         return loss
