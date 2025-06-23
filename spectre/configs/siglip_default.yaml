@@ -21,7 +21,7 @@ train:
   log_wandb: true
   log_freq: 1
 optim:
-  epochs: 250
+  epochs: 100
   base_lr: 1.0e-04
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 0
