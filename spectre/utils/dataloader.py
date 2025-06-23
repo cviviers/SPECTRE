@@ -82,12 +82,16 @@ def get_dataloader(
                     from spectre.data import InspectGDSDataset
                     datasets_list.append(InspectGDSDataset(
                         **kwargs, 
-                        cache_dir=cache_dir,
+                        cache_dir=os.path.join(cache_dir, "INSPECT"),
                         device=get_global_rank(),
                     ))
                 else:
                     from spectre.data import InspectCacheDataset
-                    datasets_list.append(InspectCacheDataset(**kwargs, cache_dir=cache_dir))
+                    datasets_list.append(InspectCacheDataset(
+                        **kwargs, 
+                        cache_dir=os.path.join(cache_dir, "INSPECT")
+                    ))
+
             else:
                 from spectre.data import InspectDataset
                 datasets_list.append(InspectDataset(**kwargs))
@@ -104,12 +108,15 @@ def get_dataloader(
                     from spectre.data import MerlinGDSDataset
                     datasets_list.append(MerlinGDSDataset(
                         **kwargs, 
-                        cache_dir=cache_dir,
+                        cache_dir=os.path.join(cache_dir, "MERLIN"),
                         device=get_global_rank(),
                     ))
                 else:
                     from spectre.data import MerlinCacheDataset
-                    datasets_list.append(MerlinCacheDataset(**kwargs, cache_dir=cache_dir))
+                    datasets_list.append(MerlinCacheDataset(
+                        **kwargs, 
+                        cache_dir=os.path.join(cache_dir, "MERLIN")
+                    ))
             else:
                 from spectre.data import MerlinDataset
                 datasets_list.append(MerlinDataset(**kwargs))
@@ -125,12 +132,15 @@ def get_dataloader(
                     from spectre.data import NlstGDSDataset
                     datasets_list.append(NlstGDSDataset(
                         **kwargs, 
-                        cache_dir=cache_dir,
+                        cache_dir=os.path.join(cache_dir, "NLST"),
                         device=get_global_rank(),
                     ))
                 else:
                     from spectre.data import NlstCacheDataset
-                    datasets_list.append(NlstCacheDataset(**kwargs, cache_dir=cache_dir))
+                    datasets_list.append(NlstCacheDataset(
+                        **kwargs, 
+                        cache_dir=os.path.join(cache_dir, "NLST")
+                    ))
             else:
                 from spectre.data import NlstDataset
                 datasets_list.append(NlstDataset(**kwargs))
@@ -146,12 +156,15 @@ def get_dataloader(
                     from spectre.data import AmosGDSDataset
                     datasets_list.append(AmosGDSDataset(
                         **kwargs, 
-                        cache_dir=cache_dir,
+                        cache_dir=os.path.join(cache_dir, "Amos"),
                         device=get_global_rank(),
                     ))
                 else:
                     from spectre.data import AmosCacheDataset
-                    datasets_list.append(AmosCacheDataset(**kwargs, cache_dir=cache_dir))
+                    datasets_list.append(AmosCacheDataset(
+                        **kwargs, 
+                        cache_dir=os.path.join(cache_dir, "Amos")
+                    ))
             else:
                 from spectre.data import AmosDataset
                 datasets_list.append(AmosDataset(**kwargs))
@@ -168,12 +181,15 @@ def get_dataloader(
                     from spectre.data import AbdomenAtlasGDSDataset
                     datasets_list.append(AbdomenAtlasGDSDataset(
                         **kwargs, 
-                        cache_dir=cache_dir,
+                        cache_dir=os.path.join(cache_dir, "AbdomenAtlas1.0Mini"),
                         device=get_global_rank(),
                     ))
                 else:
                     from spectre.data import AbdomenAtlasCacheDataset
-                    datasets_list.append(AbdomenAtlasCacheDataset(**kwargs, cache_dir=cache_dir))
+                    datasets_list.append(AbdomenAtlasCacheDataset(
+                        **kwargs, 
+                        cache_dir=os.path.join(cache_dir, "AbdomenAtlas1.0Mini")
+                    ))
             else:
                 from spectre.data import AbdomenAtlasDataset
                 datasets_list.append(AbdomenAtlasDataset(**kwargs))
@@ -189,12 +205,15 @@ def get_dataloader(
                     from spectre.data import PanoramaGDSDataset
                     datasets_list.append(PanoramaGDSDataset(
                         **kwargs, 
-                        cache_dir=cache_dir,
+                        cache_dir=os.path.join(cache_dir, "PANORAMA"),
                         device=get_global_rank(),
                     ))
                 else:
                     from spectre.data import PanoramaCacheDataset
-                    datasets_list.append(PanoramaCacheDataset(**kwargs, cache_dir=cache_dir))
+                    datasets_list.append(PanoramaCacheDataset(
+                        **kwargs, 
+                        cache_dir=os.path.join(cache_dir, "PANORAMA")
+                    ))
             else:
                 from spectre.data import PanoramaDataset
                 datasets_list.append(PanoramaDataset(**kwargs))
@@ -211,12 +230,15 @@ def get_dataloader(
                     from spectre.data import AbdomenCT1KGDSDataset
                     datasets_list.append(AbdomenCT1KGDSDataset(
                         **kwargs, 
-                        cache_dir=cache_dir,
+                        cache_dir=os.path.join(cache_dir, "AbdomenCT-1K"),
                         device=get_global_rank(),
                     ))
                 else:
                     from spectre.data import AbdomenCT1KCacheDataset
-                    datasets_list.append(AbdomenCT1KCacheDataset(**kwargs, cache_dir=cache_dir))
+                    datasets_list.append(AbdomenCT1KCacheDataset(
+                        **kwargs, 
+                        cache_dir=os.path.join(cache_dir, "AbdomenCT-1K")
+                    ))
             else:
                 from spectre.data import AbdomenCT1KDataset
                 datasets_list.append(AbdomenCT1KDataset(**kwargs))
