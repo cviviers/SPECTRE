@@ -48,39 +48,43 @@ class SigLIPLoss(nn.Module):
             torch.Tensor: Computed loss value.
         """
         if self.normalize:
-            zimg = F.normalize(zimg, p=2, dim=-1)
-            ztxt = F.normalize(ztxt, p=2, dim=-1)
+            zimg = F.normalize(zimg, p=2, dim=-1)  # (batch_size, embedding_dim)
+            ztxt = F.normalize(ztxt, p=2, dim=-1)  # (batch_size, embedding_dim)
 
-        logits = torch.matmul(zimg, ztxt.T)  # Compute similarity matrix
+        logits = torch.matmul(zimg, ztxt.T)  # Compute similarity matrix (batch_size, batch_size)
         logits = logits * self.t + self.b  # Apply scaling and bias
 
         batch_size = logits.size(0)
         eye = torch.eye(batch_size, device=logits.device)  # Identity matrix for positives
 
-        m1_diag1 = -torch.ones_like(logits, device=logits.device) + 2 * eye
-        loglik = F.logsigmoid(m1_diag1 * logits)  # Log sigmoid
-        nll = -torch.sum(loglik, dim=-1)  # Negative log likelihood
-        loss = torch.mean(nll)  # Final mean loss
+        # m1_diag1 = -torch.ones_like(logits, device=logits.device) + 2 * eye
+        # loglik = F.logsigmoid(m1_diag1 * logits)  # Log sigmoid  (batch_size, batch_size)
+        # nll = -torch.sum(loglik, dim=-1)  # Negative log likelihood
+        # loss = torch.mean(nll)  # Final mean loss
+
+        # if not return_details:
+        #     return loss
+        
+        # pos_loglik = torch.diag(loglik)
+        # pos_loss = -pos_loglik.sum() / batch_size  # Contribution of positive pairs
+
+        # neg_loglik = loglik * (1 - eye)  # Exclude diagonal for negatives
+        # neg_loss = -neg_loglik.sum() / batch_size  # Contribution of negative pairs
+
+        # return loss, {"pos_loss": pos_loss.item(), "neg_loss": neg_loss.item()}
+
+        pos_loglik = torch.diag(F.logsigmoid(logits))
+
+        neg_loglik = F.logsigmoid(-logits) * (1 - eye)
+        neg_loglik_avg = neg_loglik.sum(dim=-1) / (batch_size - 1)  # Average per sample
+        
+        loss_per_sample = -pos_loglik - neg_loglik_avg
+        loss = loss_per_sample.mean()
 
         if not return_details:
             return loss
         
-        pos_loglik = torch.diag(loglik)
         pos_loss = -pos_loglik.sum() / batch_size  # Contribution of positive pairs
-
-        neg_loglik = loglik * (1 - eye)  # Exclude diagonal for negatives
-        neg_loss = -neg_loglik.sum() / batch_size  # Contribution of negative pairs
+        neg_loss = neg_loglik_avg.sum() / batch_size  # Contribution of negative pairs
 
         return loss, {"pos_loss": pos_loss.item(), "neg_loss": neg_loss.item()}
-
-        # pos_loglik = F.logsigmoid(torch.diag(logits))  # Log sigmoid for positive pairs
-        # pos_loss = -pos_loglik.mean()
-
-        # neg_loglik = F.logsigmoid(-logits)  # Log sigmoid for negative pairs
-        # neg_loglik.fill_diagonal_(0)  # Set diagonal to zero for negatives
-
-        # neg_loss = -neg_loglik.sum() / (batch_size ** 2 - batch_size)  # Average over negative pairs
-
-        # loss = pos_loss + neg_loss  # Combine positive and negative terms
-
-        # return loss
