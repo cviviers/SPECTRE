@@ -130,13 +130,13 @@ def main(cfg, accelerator: Accelerator):
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
 
-    image_feature_comb = models.FeatureVisionTransformer(
-        patch_dim=image_backbone_embed_dim,
-        embed_dim=cfg.model.feature_comb_embed_dim,
-        num_patches=36,
-        depth=cfg.model.feature_comb_num_layers,
-        heads=cfg.model.feature_comb_num_heads,
-    )
+    # image_feature_comb = models.FeatureVisionTransformer(
+    #     patch_dim=image_backbone_embed_dim,
+    #     embed_dim=cfg.model.feature_comb_embed_dim,
+    #     num_patches=36,
+    #     depth=cfg.model.feature_comb_num_layers,
+    #     heads=cfg.model.feature_comb_num_heads,
+    # )
     
     # Initialize text backbone
     # TODO: add support for other text backbones
@@ -243,8 +243,8 @@ def main(cfg, accelerator: Accelerator):
     model = SigLIP(
         image_backbone=image_backbone,
         text_backbone=text_backbone,
-        image_feature_comb=image_feature_comb,
-        image_embed_dim=image_feature_comb.embed_dim,
+        # image_feature_comb=image_feature_comb,
+        image_embed_dim = image_backbone_embed_dim,  # image_embed_dim=image_feature_comb.embed_dim,
         text_embed_dim=text_backbone_embed_dim,
         projection_dim=cfg.model.projection_dim,
     )
@@ -326,8 +326,6 @@ def main(cfg, accelerator: Accelerator):
                 text_embeddings = accelerator.gather(text_embeddings)
 
                 loss, details = criterion(image_embeddings, text_embeddings, return_details=True)
-                # Divide loss by number of devices
-                loss = loss / get_global_size()
 
                 # Backward pass
                 accelerator.backward(loss)
