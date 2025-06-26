@@ -1,17 +1,36 @@
 import argparse
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
-from pathlib import Path
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser(description="Visualize projected image embeddings with t-SNE")
-    parser.add_argument("--csv_path", type=str, required=True, help="Path to the input CSV file")
-    parser.add_argument("--embedding_dir", type=str, required=True, help="Root directory where embeddings are stored")
-    parser.add_argument("--embedding_type", type=str, default="image_projection", help="Which embedding to load (e.g. image_projection)")
-    parser.add_argument("--output_plot", type=str, default=None, help="Path to save the plot (optional)")
+    parser = argparse.ArgumentParser(
+        description="Visualize projected embeddings with t-SNE"
+    )
+    parser.add_argument(
+        "--csv_path", type=str, required=True,
+        help="Path to CSV file with VolumeName and abnormality flags"
+    )
+    parser.add_argument(
+        "--embedding_dir", type=str, required=True,
+        help="Directory where each sample subfolder holds embedding .npy files"
+    )
+    parser.add_argument(
+        "--embedding_type", type=str, default="image_projection",
+        help="Which .npy embedding to load (without extension)"
+    )
+    parser.add_argument(
+        "--perplexity", type=float, default=50,
+        help="Perplexity for t-SNE"
+    )
+    parser.add_argument(
+        "--output_plot", type=str, default=None,
+        help="Path to save the t-SNE plot (optional)"
+    )
     return parser
 
 
@@ -27,61 +46,48 @@ def assign_group(n):
 
 
 def main(args):
+
+    # Load labels
     df = pd.read_csv(args.csv_path)
-    df_filtered = df[df["VolumeName"].str.endswith("_1.nii.gz")].copy()
+    cols = df.columns.difference(["VolumeName"])
+    df["num_abnormalities"] = (df[cols] == 1).sum(axis=1)
+    df["group"] = df["num_abnormalities"].apply(assign_group)
 
-    cols_to_check = df_filtered.columns.difference(["VolumeName"])
-    df_filtered["num_abnormalities"] = (df_filtered[cols_to_check] == 1).sum(axis=1)
-    df_filtered["group"] = df_filtered["num_abnormalities"].apply(assign_group)
-
+     # Load embeddings
     embeddings = []
-    labels = []
     missing = []
-
-    for _, row in df_filtered.iterrows():
-        filename = row["VolumeName"].split(".")[0]
-        emb_path = Path(args.embedding_dir) / filename / f"{args.embedding_type}.npy"
-
-        if emb_path.exists():
-            try:
-                emb = np.load(emb_path)
-            except Exception as e:
-                print(f"Error loading {emb_path}: {e}")
-                continue
-            if emb.ndim > 1:
-                emb = emb.flatten()
-            embeddings.append(emb)
-            labels.append(row["group"])
-        else:
+    for _, row in df.iterrows():
+        fname = Path(row["VolumeName"]).stem
+        emb_path = Path(args.embedding_dir) / fname / f"{args.embedding_type}.npy"
+        if not emb_path.exists():
             missing.append(str(emb_path))
+            continue
+        emb = np.load(emb_path)
+        embeddings.append(emb.flatten())
 
     if missing:
-        print(f"Warning: {len(missing)} missing embeddings.")
-        print("Examples:", missing[:5])
+        print(f"Warning: {len(missing)} embeddings missing. Examples: {missing[:5]}")
 
     embeddings = np.array(embeddings)
-    print(f"Loaded {len(embeddings)} embeddings.")
+    print(f"Loaded {len(embeddings)} embeddings for t-SNE.")
 
-    tsne = TSNE(n_components=2, random_state=42, perplexity=30)
+    # Run t-SNE
+    tsne = TSNE(n_components=2, random_state=42, perplexity=args.perplexity)
     tsne_result = tsne.fit_transform(embeddings)
 
-    group_colors = {
-        "0": "red",
-        "1-4": "orange",
-        "5-8": "blue",
-        "9+": "green"
-    }
-
+    # Plot
+    colors = {"0": "red", "1-4": "orange", "5-8": "blue", "9+": "green"}
     plt.figure(figsize=(10, 8))
-    for group in sorted(set(labels)):
-        idx = [i for i, g in enumerate(labels) if g == group]
-        plt.scatter(tsne_result[idx, 0], tsne_result[idx, 1],
-                    label=group, color=group_colors.get(group, "gray"), alpha=0.7)
-
-    plt.title("t-SNE Visualization of Projected Image Embeddings")
-    plt.legend(title="Number of abnormalities")
+    for grp in df["group"].unique():
+        idxs = df.index[df["group"] == grp].tolist()
+        plt.scatter(
+            tsne_result[idxs, 0], tsne_result[idxs, 1],
+            label=grp, color=colors.get(grp, "gray"), alpha=0.7, s=5
+        )
+    plt.title(f"t-SNE of {args.embedding_type} embeddings")
     plt.xlabel("t-SNE 1")
     plt.ylabel("t-SNE 2")
+    plt.legend(title="# abnormalities")
     plt.grid(True)
     plt.tight_layout()
 
@@ -93,6 +99,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    
     parser = get_args_parser()
     args = parser.parse_args()
     main(args)

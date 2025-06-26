@@ -29,25 +29,72 @@ from spectre.transforms import SWSpatialCropSamplesd, GenerateReportTransform
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser(description="Save embeddings from 3D NIfTI images using Spectre models")
-    parser.add_argument("--data_dir", type=str, required=True, help="Directory to CT-RATE dataset")
-    parser.add_argument("--save_dir", type=str, default="embeddings", help="Directory to save embeddings")
-    parser.add_argument("--image_backbone_weights", type=str, required=True, help="Path to the image backbone weights")
+    parser = argparse.ArgumentParser(
+        description="Save embeddings from 3D NIfTI images using Spectre models"
+    )
+    parser.add_argument(
+        "--data_dir", type=str, required=True, 
+        help="Directory to CT-RATE dataset",
+    )
+    parser.add_argument(
+        "--save_dir", type=str, default="embeddings", 
+        help="Directory to save embeddings",
+    )
+    parser.add_argument(
+        "--image_backbone_weights", type=str, required=True, 
+        help="Path to the image backbone weights",
+    )
 
-    parser.add_argument("--architecture", type=str, default="vit_base_patch16_128", help="Model architecture for image backbone")
-    parser.add_argument("--feature_comb_embed_dim", type=int, default=768, help="Embedding dimension for image feature combiner")
-    parser.add_argument("--feature_comb_num_layers", type=int, default=4, help="Number of layers in the image feature combiner")
-    parser.add_argument("--feature_comb_num_heads", type=int, default=12, help="Number of attention heads in the image feature combiner")
-    parser.add_argument("--projection_dim", type=int, default=4096, help="Dimension of the projection layer for image features")
-    parser.add_argument("--text_tokenizer", type=str, default="BAAI/bge-m3", help="Tokenizer for text backbone")
+    parser.add_argument(
+        "--architecture", type=str, default="vit_base_patch16_128", 
+        help="Model architecture for image backbone",
+    )
+    parser.add_argument(
+        "--feature_comb_embed_dim", type=int, default=768, 
+        help="Embedding dimension for image feature combiner",
+    )
+    parser.add_argument(
+        "--feature_comb_num_layers", type=int, default=4, 
+        help="Number of layers in the image feature combiner",
+    )
+    parser.add_argument(
+        "--feature_comb_num_heads", type=int, default=12, 
+        help="Number of attention heads in the image feature combiner",
+    )
+    parser.add_argument(
+        "--projection_dim", type=int, default=4096, 
+        help="Dimension of the projection layer for image features",
+    )
+    parser.add_argument(
+        "--text_tokenizer", type=str, default="BAAI/bge-m3", 
+        help="Tokenizer for text backbone",
+    )
 
-    parser.add_argument("--image_feature_comb_weights", type=str, default=None, help="Path to the image feature combiner weights")
-    parser.add_argument("--image_projection_weights", type=str, default=None, help="Path to the image projection weights")
-    parser.add_argument("--text_backbone_weights", type=str, default=None, help="Path to the text backbone weights")
-    parser.add_argument("--text_projection_weights", type=str, default=None, help="Path to the text projection weights")
+    parser.add_argument(
+        "--image_feature_comb_weights", type=str, default=None, 
+        help="Path to the image feature combiner weights",
+    )
+    parser.add_argument(
+        "--image_projection_weights", type=str, default=None, 
+        help="Path to the image projection weights",
+    )
+    parser.add_argument(
+        "--text_backbone_weights", type=str, default=None, 
+        help="Path to the text backbone weights",
+    )
+    parser.add_argument(
+        "--text_projection_weights", type=str, default=None, 
+        help="Path to the text projection weights",
+    )
 
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for the dataloader")
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for the dataloader")
+    parser.add_argument(
+        "--batch_size", type=int, default=4, 
+        help="Batch size for the dataloader",
+    )
+    parser.add_argument(
+        "--num_workers", type=int, default=4, 
+        help="Number of workers for the dataloader",
+    )
     return parser
 
 
@@ -116,19 +163,9 @@ def main(args):
         image_backbone = getattr(models, args.architecture)(
             pretrained_weights=args.image_backbone_weights,
             num_classes=0,
+            global_pool="",  # Return all tokens
         )
         image_backbone_embed_dim = image_backbone.embed_dim
-    elif (
-        hasattr(models, args.architecture)
-        and args.architecture.startswith("resnet")
-        or args.architecture.startswith("resnext")
-    ):
-        image_backbone = getattr(models, args.architecture)(
-            pretrained_weights=args.image_backbone_weights,
-            num_classes=0,
-            norm_layer=partial(nn.BatchNorm3d, track_running_stats=False),
-        )
-        image_backbone_embed_dim = image_backbone.num_features
     else:
         raise NotImplementedError(f"Model {args.architecture} not implemented.")
     image_backbone.to(device).eval()
@@ -241,12 +278,16 @@ def main(args):
         with torch.no_grad():
             image_embeddings = image_backbone(images)
             save_embeddings(
-                image_embeddings.view(B, N, -1), 
+                image_embeddings[:, 0].view(B, N, -1), 
                 [p / "image_backbone.npy" for p in save_paths]
+            )  # Save the CLS token embeddings of shape ()
+            save_embeddings(
+                image_embeddings[:, 1:].view(B, N, image_embeddings.shape[1] - 1, -1),
+                [p / "image_backbone_full.npy" for p in save_paths]
             )
 
             if do_image_feature_comb:
-                image_embeddings = image_feature_comb(image_embeddings.view(B, N, -1))
+                image_embeddings = image_feature_comb(image_embeddings[:, 0].view(B, N, -1))
                 save_embeddings(
                     image_embeddings, 
                     [p / "image_feature_comb.npy" for p in save_paths]
@@ -301,6 +342,7 @@ def save_embeddings(embeddings, save_paths):
 
 
 if __name__ == "__main__":
+    
     parser = get_args_parser()
     args = parser.parse_args()
     main(args)
