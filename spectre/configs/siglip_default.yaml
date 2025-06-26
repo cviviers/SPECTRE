@@ -25,7 +25,7 @@ optim:
   base_lr: 1.0e-04
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 0
-  freeze_backbone_epochs: 25
+  freeze_backbone_epochs: 10
   min_lr: 1.0e-06
   clip_grad_norm: 1.0
   scaling_rule: sqrt_wrt_1024

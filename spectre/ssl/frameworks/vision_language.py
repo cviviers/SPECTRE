@@ -67,6 +67,8 @@ class SigLIP(nn.Module):
         image_embeddings = self.image_backbone(images)
         if self.image_feature_comb is not None:
             image_embeddings = self.image_feature_comb(image_embeddings.view(B, N, -1)) # (batch, embed_dim)
+        else:
+            image_embeddings = image_embeddings.view(B, N, -1).max(dim=1).values
         image_embeddings = self.image_projection(image_embeddings) # (batch, embed_dim)
 
         # Compute text embeddings
