@@ -13,3 +13,4 @@ transformers
 tokenizers
 FlagEmbedding[finetune]
 peft
+loralib
