@@ -23,7 +23,7 @@ from transformers.models.qwen3.modeling_qwen3 import (
 
 import spectre.models as models
 from spectre.ssl.frameworks import SigLIP
-from spectre.ssl.losses import SigLIPLoss
+from spectre.ssl.losses import SigLIPLoss, CLIPLoss
 from spectre.ssl.transforms import SigLIPTransform
 from spectre.configs import default_config_siglip
 from spectre.utils import (
@@ -250,12 +250,15 @@ def main(cfg, accelerator: Accelerator):
     )
 
     # Intialize criterion
-    criterion = SigLIPLoss(
-        learnable_t=cfg.model.learnable_t,
-        learnable_b=cfg.model.learnable_b,
+    # criterion = SigLIPLoss(
+    #     learnable_t=cfg.model.learnable_t,
+    #     learnable_b=cfg.model.learnable_b,
+    #     normalize=cfg.model.normalize,
+    #     init_t=cfg.model.init_t,
+    #     init_b=cfg.model.init_b,
+    # )
+    criterion = CLIPLoss(
         normalize=cfg.model.normalize,
-        init_t=cfg.model.init_t,
-        init_b=cfg.model.init_b,
     )
 
     # Initialize optimizer
