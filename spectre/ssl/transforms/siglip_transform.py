@@ -42,16 +42,17 @@ class SigLIPTransform(Compose):
                 ),
                 Orientationd(keys=("image",), axcodes="RAS"),
                 Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
-                ResizeWithPadOrCropd(keys=("image",), spatial_size=global_size),
+                # ResizeWithPadOrCropd(keys=("image",), spatial_size=global_size),
+                ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, 256)),
                 CastToTyped(keys=("image",), dtype=getattr(torch, dtype)),
                 
                 # Crop the volume into equal non-overlapping samples
-                RandSpatialCropd(
-                    keys=("image",),
-                    roi_size=(384, 384, 256),
-                    random_size=False,
-                    random_center=True,
-                ),
+                # RandSpatialCropd(
+                #     keys=("image",),
+                #     roi_size=(384, 384, 256),
+                #     random_size=False,
+                #     random_center=True,
+                # ),
                 SWSpatialCropSamplesd(
                     keys=("image",),
                     patch_size=input_size,
@@ -62,8 +63,8 @@ class SigLIPTransform(Compose):
                 GenerateReportTransform(
                     keys=("findings", "impressions", "icd10"), 
                     max_num_icd10=20, 
-                    likelihood_original=0.5,
-                    drop_chance=0.3,
+                    likelihood_original=1.0,  # 0.5
+                    drop_chance=0.0,  # 0.3
                 ),
             ]
         )
