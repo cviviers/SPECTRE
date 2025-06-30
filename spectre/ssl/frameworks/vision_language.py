@@ -9,11 +9,12 @@ Addional resources:
 Hamamci et al., "Developing Generalist Foundation Models from a Multimodal Dataset for 3D Computed Tomography" (2024),
 https://arxiv.org/abs/2403.17834
 """
-import os
 from typing import Optional
 
 import torch
 import torch.nn as nn
+
+from spectre.ssl.heads import SigLIPProjectionHead
 
 
 class SigLIP(nn.Module):
@@ -24,15 +25,25 @@ class SigLIP(nn.Module):
         image_feature_comb: Optional[nn.Module] = None,
         image_embed_dim: int = 768,
         text_embed_dim: int = 1536,
-        projection_dim: int = 768,
+        projection_dim: int = 512,
     ):
         super().__init__()
         self.image_backbone = image_backbone
         self.text_backbone = text_backbone
         self.image_feature_comb = image_feature_comb
 
-        self.image_projection = nn.Linear(image_embed_dim, projection_dim)
-        self.text_projection = nn.Linear(text_embed_dim, projection_dim)
+        # self.image_projection = nn.Linear(image_embed_dim, projection_dim)
+        # self.text_projection = nn.Linear(text_embed_dim, projection_dim)
+        self.image_projection = SigLIPProjectionHead(
+            input_dim=image_embed_dim,
+            output_dim=projection_dim,
+            freeze_last_layer=5,
+        )
+        self.text_projection = SigLIPProjectionHead(
+            input_dim=text_embed_dim,
+            output_dim=projection_dim,
+            freeze_last_layer=5,
+        )
 
         nn.init.trunc_normal_(self.image_projection.weight, std=0.01)
         nn.init.trunc_normal_(self.text_projection.weight, std=0.01)

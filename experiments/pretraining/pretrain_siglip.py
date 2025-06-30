@@ -339,6 +339,9 @@ def main(cfg, accelerator: Accelerator):
                         if "image_backbone" in name or "text_backbone" in name:
                             if param.requires_grad:
                                 param.grad = None
+                
+                unwrapped_model.image_projection.cancel_last_layer_gradients(epoch)
+                unwrapped_model.text_projection.cancel_last_layer_gradients(epoch)
 
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
