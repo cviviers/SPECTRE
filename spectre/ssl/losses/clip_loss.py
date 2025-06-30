@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -18,7 +19,7 @@ class CLIPLoss(nn.Module):
         """
         super().__init__()
         self.normalize = normalize
-        self.t = nn.Parameter(torch.ones([]) * (1 / t))
+        self.t = nn.Parameter(torch.ones([]) * np.log(1 / t))
 
     def forward(
         self, 
@@ -41,7 +42,7 @@ class CLIPLoss(nn.Module):
             ztxt = F.normalize(ztxt, dim=-1)
 
         # Compute the logits using outer product
-        logits = torch.matmul(zimg, ztxt.T) * self.t
+        logits = torch.matmul(zimg, ztxt.T) * self.t.exp()
 
         # Ground truth labels are diagonal (i.e., perfect alignment)
         labels = torch.arange(zimg.size(0), device=zimg.device)
