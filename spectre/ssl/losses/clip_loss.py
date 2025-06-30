@@ -41,7 +41,7 @@ class CLIPLoss(nn.Module):
             ztxt = F.normalize(ztxt, dim=-1)
 
         # Compute the logits using outer product
-        logits = torch.matmul(zimg, ztxt.T) * torch.exp(self.t)
+        logits = torch.matmul(zimg, ztxt.T) * self.t
 
         # Ground truth labels are diagonal (i.e., perfect alignment)
         labels = torch.arange(zimg.size(0), device=zimg.device)
