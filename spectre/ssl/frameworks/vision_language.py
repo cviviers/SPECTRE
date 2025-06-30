@@ -45,14 +45,14 @@ class SigLIP(nn.Module):
             freeze_last_layer=5,
         )
 
-        nn.init.trunc_normal_(self.image_projection.weight, std=0.01)
-        nn.init.trunc_normal_(self.text_projection.weight, std=0.01)
+        # nn.init.trunc_normal_(self.image_projection.weight, std=0.01)
+        # nn.init.trunc_normal_(self.text_projection.weight, std=0.01)
 
-        # Initialize the bias to zero
-        if self.image_projection.bias is not None:
-            nn.init.zeros_(self.image_projection.bias)
-        if self.text_projection.bias is not None:
-            nn.init.zeros_(self.text_projection.bias)
+        # # Initialize the bias to zero
+        # if self.image_projection.bias is not None:
+        #     nn.init.zeros_(self.image_projection.bias)
+        # if self.text_projection.bias is not None:
+        #     nn.init.zeros_(self.text_projection.bias)
 
     def forward(
         self,
