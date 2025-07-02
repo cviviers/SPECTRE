@@ -222,21 +222,23 @@ def main(cfg, accelerator: Accelerator):
     text_backbone_embed_dim = text_backbone.config.hidden_size
 
     # Add LoRA adapters to text backbone if specified
-    if cfg.model.use_lora and cfg.model.lora_r > 0:
-        add_lora_adapters(
-            text_backbone,
-            r=cfg.model.lora_r,
-            lora_alpha=cfg.model.lora_alpha,
-            lora_dropout=cfg.model.lora_dropout,
-            target_keywords=cfg.model.lora_target_keywords,
-        )
-        for n, p in text_backbone.named_parameters():
-            p.requires_grad = ('lora_' in n)
-        accelerator.print(
-            f"LoRA adapters added to text backbone. Trainable parameters: "
-            f"{sum(p.numel() for p in text_backbone.parameters() if p.requires_grad):,d} / "
-            f"{sum(p.numel() for p in text_backbone.parameters()):,d}."
-        )
+    # if cfg.model.use_lora and cfg.model.lora_r > 0:
+    #     add_lora_adapters(
+    #         text_backbone,
+    #         r=cfg.model.lora_r,
+    #         lora_alpha=cfg.model.lora_alpha,
+    #         lora_dropout=cfg.model.lora_dropout,
+    #         target_keywords=cfg.model.lora_target_keywords,
+    #     )
+    #     for n, p in text_backbone.named_parameters():
+    #         p.requires_grad = ('lora_' in n)
+    #     accelerator.print(
+    #         f"LoRA adapters added to text backbone. Trainable parameters: "
+    #         f"{sum(p.numel() for p in text_backbone.parameters() if p.requires_grad):,d} / "
+    #         f"{sum(p.numel() for p in text_backbone.parameters()):,d}."
+    #     )
+    for n, p in text_backbone.named_parameters():
+        p.requires_grad = False  # freeze text backbone
 
     # Initialize the SigLIP model
     model = SigLIP(
