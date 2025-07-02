@@ -134,6 +134,7 @@ def main(cfg, accelerator: Accelerator):
         wandb.watch(
             image_feature_comb,
             log="all",
+            log_freq=2500,
         )
     
     # Initialize text backbone
