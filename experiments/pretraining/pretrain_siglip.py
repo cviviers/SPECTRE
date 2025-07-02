@@ -4,6 +4,7 @@ import argparse
 from itertools import chain
 from functools import partial
 
+import wandb
 import torch
 import numpy as np
 import torch.nn as nn
@@ -128,6 +129,10 @@ def main(cfg, accelerator: Accelerator):
         embed_dim=cfg.model.feature_comb_embed_dim,
         depth=cfg.model.feature_comb_num_layers,
         num_heads=cfg.model.feature_comb_num_heads,
+    )
+    wandb.watch(
+        image_feature_comb,
+        log="all",
     )
     
     # Initialize text backbone
