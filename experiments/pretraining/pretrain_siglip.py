@@ -289,6 +289,13 @@ def main(cfg, accelerator: Accelerator):
             log="all",
             log_freq=1000,
         )
+    
+    print("📦 Registered forward/backward hooks:")
+    for n, m in unwrapped_model.named_modules():
+        if m._forward_hooks or m._backward_hooks:
+            accelerator.print(
+                f"{n}:{len(m._forward_hooks)} forward hooks, {len(m._backward_hooks)} backward hooks"
+            )
 
     # Load checkpoint if specified
     if cfg.train.resume_ckp:
