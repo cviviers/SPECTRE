@@ -380,7 +380,7 @@ def main(cfg, accelerator: Accelerator):
                             gradients[n] = float("nan")  # param has no grad this step
 
                 # Log gradients to wandb
-                wandb.log({
+                accelerator.log({
                     f"gradients/{n}": v for n, v in gradients.items()
                 }, step=global_step)
                 
