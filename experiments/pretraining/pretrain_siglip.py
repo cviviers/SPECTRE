@@ -350,7 +350,7 @@ def main(cfg, accelerator: Accelerator):
                 #             if param.requires_grad:
                 #                 param.grad = None
                 
-                unwrapped_model.image_projection.cancel_last_layer_gradients(epoch)
+                # unwrapped_model.image_projection.cancel_last_layer_gradients(epoch)
                 # unwrapped_model.text_projection.cancel_last_layer_gradients(epoch)
 
                 # Update model
@@ -377,6 +377,11 @@ def main(cfg, accelerator: Accelerator):
                         },
                         step=global_step,
                     )
+                
+                if accelerator.is_main_process:
+                    for n, p in unwrapped_model.image_feature_comb.named_parameters():
+                        if p.requires_grad:
+                            print(f"[DEBUG] {n}: grad is None? {p.grad is None}")
                 
                 # Zero gradients
                 optimizer.zero_grad()
