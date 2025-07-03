@@ -46,7 +46,7 @@ class SigLIP(nn.Module):
             input_dim=image_embed_dim,
             # output_dim=projection_dim,
             output_dim=text_embed_dim,  # use same projection as text
-            freeze_last_layer=1,
+            freeze_last_layer=0,
         )
         # self.text_projection = SigLIPProjectionHead(
         #     input_dim=text_embed_dim,
