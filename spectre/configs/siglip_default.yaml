@@ -25,7 +25,7 @@ optim:
   base_lr: 0.0005
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 10
-  freeze_backbone_epochs: 10
+  freeze_backbone_epochs: 10  # -1 means fully freeze backbone
   min_lr: 1.0e-06
   clip_grad_norm: 1.0
   scaling_rule: sqrt_wrt_1024
@@ -37,8 +37,8 @@ model:
   feature_comb_embed_dim: 768
   feature_comb_num_layers: 4
   feature_comb_num_heads: 12
-  text_tokenizer: BAAI/bge-m3  # Qwen/Qwen3-Embedding-0.6B
-  text_encoder_weights: /data/checkpoints/BAAI/bge-m3/pytorch_model.bin  # /data/checkpoints/Qwen/Qwen3-Embedding-0.6B/model.safetensors
+  text_tokenizer: Qwen/Qwen3-Embedding-0.6B
+  text_encoder_weights: /data/checkpoints/Qwen/Qwen3-Embedding-0.6B/model.safetensors
   use_lora: true
   lora_r: 8
   lora_alpha: 32
