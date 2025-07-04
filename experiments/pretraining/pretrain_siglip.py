@@ -336,6 +336,8 @@ def main(cfg, accelerator: Accelerator):
                             "loss": loss.item(),
                             "pos_loss": details["pos_loss"],
                             "neg_loss": details["neg_loss"],
+                            "temperature": criterion.t.item(),
+                            "bias": criterion.b.item(),
                             "epoch": epoch,
                             "lr": lr,
                         },
