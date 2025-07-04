@@ -344,19 +344,20 @@ def main(cfg, accelerator: Accelerator):
                         step=global_step,
                     )
                 
-                # Collect gradients
-                gradients = {}
-                for n, p in chain(model.named_parameters(), criterion.named_parameters()):
-                    if p.requires_grad:
-                        if p.grad is not None:
-                            gradients[n] = p.grad.abs().mean().item()  # mean absolute grad
-                        else:
-                            gradients[n] = float("nan")  # param has no grad this step
+                if global_step % cfg.train.log_grad_freq == 0:
+                    # Collect gradients
+                    gradients = {}
+                    for n, p in chain(model.named_parameters(), criterion.named_parameters()):
+                        if p.requires_grad:
+                            if p.grad is not None:
+                                gradients[n] = p.grad.abs().mean().item()  # mean absolute grad
+                            else:
+                                gradients[n] = float("nan")  # param has no grad this step
 
-                # Log gradients to wandb
-                accelerator.log({
-                    f"gradients/{n}": v for n, v in gradients.items()
-                }, step=global_step)
+                    # Log gradients to wandb
+                    accelerator.log({
+                        f"gradients/{n}": v for n, v in gradients.items()
+                    }, step=global_step)
                 
                 # Zero gradients
                 optimizer.zero_grad()
