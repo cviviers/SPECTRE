@@ -241,6 +241,7 @@ def main(cfg, accelerator: Accelerator):
 
     # Keep unwrapped model for easier access to individual components
     unwrapped_model = accelerator.unwrap_model(model)
+    unwrapped_criterion = accelerator.unwrap_model(criterion)
 
     # Load checkpoint if specified
     if cfg.train.resume_ckp:
@@ -265,7 +266,7 @@ def main(cfg, accelerator: Accelerator):
     global_step: int = start_epoch * len(data_loader)
     for epoch in range(start_epoch, cfg.optim.epochs):
         model.train()
-        for batch_num, batch in enumerate(data_loader):
+        for batch in data_loader:
 
             with accelerator.accumulate(model):
 
@@ -336,8 +337,8 @@ def main(cfg, accelerator: Accelerator):
                             "loss": loss.item(),
                             "pos_loss": details["pos_loss"],
                             "neg_loss": details["neg_loss"],
-                            "temperature": criterion.t.item(),
-                            "bias": criterion.b.item(),
+                            "temperature": unwrapped_criterion.t.item(),
+                            "bias": unwrapped_criterion.b.item(),
                             "epoch": epoch,
                             "lr": lr,
                         },
