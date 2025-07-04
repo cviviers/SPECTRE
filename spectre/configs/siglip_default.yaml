@@ -20,6 +20,7 @@ train:
   use_gds: false
   log_wandb: true
   log_freq: 1
+  log_grad_freq: 100
 optim:
   epochs: 100
   base_lr: 0.0005
