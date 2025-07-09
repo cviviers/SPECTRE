@@ -266,7 +266,7 @@ def main(cfg, accelerator: Accelerator):
     global_step: int = start_epoch * len(data_loader)
     for epoch in range(start_epoch, cfg.optim.epochs):
         model.train()
-        for batch in data_loader:
+        for step, batch in enumerate(data_loader):
 
             with accelerator.accumulate(model):
 
@@ -295,6 +295,13 @@ def main(cfg, accelerator: Accelerator):
                 # to keep the computation graph intact
                 idx_start = get_global_rank() * cfg.train.batch_size_per_gpu
                 idx_end = (get_global_rank() + 1) * cfg.train.batch_size_per_gpu
+
+                if epoch == 0 and step == 0:
+                    accelerator.print(
+                        f"Image embeddings: {image_embeddings}",
+                        f"Image embeddings gathered: {image_embeddings_gathered[idx_start:idx_end]}",
+                    )
+
                 image_embeddings_gathered[idx_start:idx_end] = image_embeddings
                 text_embeddings_gathered[idx_start:idx_end] = text_embeddings
 
