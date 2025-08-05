@@ -151,15 +151,18 @@ class SigLIPLoss(nn.Module):
             torch.Tensor: Computed loss value.
         """
         if self.normalize:
+            print(f"[Rank {dist.get_rank() if dist.is_initialized() else 0}] Normalizing embeddings")
             zimg = F.normalize(zimg, p=2, dim=-1)
             ztxt = F.normalize(ztxt, p=2, dim=-1)
 
         # ---- setup distributed ----
         if not dist.is_initialized():
             # fallback to single-GPU
+            print("[Single GPU] Computing logits")
             logits = zimg @ ztxt.t()
             logits = logits * self.t + self.b
 
+            print("[Single GPU] Computing slice_loglik")
             pos_ll, neg_ll = self.slice_loglik(logits, include_pos=True)
 
             pos_loss = -pos_ll.mean()  # mean loss for positives
@@ -168,7 +171,9 @@ class SigLIPLoss(nn.Module):
             loss = pos_loss + neg_loss  # total loss
             
             if return_details:
+                print("[Single GPU] Returning loss with details")
                 return loss, {"pos_loss": pos_loss.item(), "neg_loss": neg_loss.item()}
+            print("[Single GPU] Returning loss")
             return loss
 
         world_size = dist.get_world_size()
@@ -177,6 +182,7 @@ class SigLIPLoss(nn.Module):
 
         # buffer for the rotating text embeddings
         # start by copying the local ztxt into it
+        print(f"[Rank {rank}] Distributed mode: world_size={world_size}, batch_size={B}")
         ztxt_rot = ztxt.clone()
 
         # accumulators (sum of per-sample losses)
@@ -185,16 +191,21 @@ class SigLIPLoss(nn.Module):
         samples_cnt = torch.tensor(0, device=zimg.device)
 
         for k in range(world_size):
+            print(f"[Rank {rank}] Loop {k}/{world_size}")
             if k > 0:
                 # this will overwrite ztxt_rot with the embeddings from rank=src
                 src = (rank + k) % world_size
+                print(f"[Rank {rank}] Broadcasting ztxt_rot from src={src}")
                 dist.broadcast(ztxt_rot, src=src)
+                print(f"[Rank {rank}] Finished broadcast for k={k}")
 
+            print(f"[Rank {rank}] Computing logits for k={k}")
             # now compute this “slice” of the full N×N logits:
             logits = zimg @ ztxt_rot.t()  # (batch_size, batch_size)
             logits = logits * self.t + self.b
 
             if k == 0:
+                print(f"[Rank {rank}] Computing slice_loglik with positives for k={k}")
                 pos_ll, neg_ll = self.slice_loglik(logits, include_pos=True)
                 pos_sum += pos_ll.sum()  # accumulate positive log likelihood
                 neg_sum += neg_ll.sum()  # accumulate negative log likelihood
@@ -202,14 +213,18 @@ class SigLIPLoss(nn.Module):
             else:
                 # for all other slices, we only compute the negative log likelihood
                 # since the positive pairs are already included in the first slice
+                print(f"[Rank {rank}] Computing slice_loglik without positives for k={k}")
                 pos_ll, neg_ll = self.slice_loglik(logits, include_pos=False)
                 neg_sum += neg_ll.sum()
 
             samples_cnt += B  # accumulate the number of samples processed
+            print(f"[Rank {rank}] samples_cnt={samples_cnt.item()} after k={k}")
 
+        print(f"[Rank {rank}] Calling dist.all_reduce for pos_sum, neg_sum, samples_cnt")
         dist.all_reduce(pos_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(neg_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(samples_cnt, op=dist.ReduceOp.SUM)
+        print(f"[Rank {rank}] Finished all_reduce")
 
         # Compute the final loss
         pos_loss = -pos_sum / samples_cnt
@@ -219,5 +234,7 @@ class SigLIPLoss(nn.Module):
         total_loss = pos_loss + neg_loss
 
         if return_details:
+            print(f"[Rank {rank}] Returning total_loss with details")
             return total_loss, {"pos_loss": pos_loss.item(), "neg_loss": neg_loss.item()}
+        print(f"[Rank {rank}] Returning total_loss")
         return total_loss
