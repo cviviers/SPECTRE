@@ -151,18 +151,15 @@ class SigLIPLoss(nn.Module):
             torch.Tensor: Computed loss value.
         """
         if self.normalize:
-            print(f"[Rank {dist.get_rank() if dist.is_initialized() else 0}] Normalizing embeddings")
             zimg = F.normalize(zimg, p=2, dim=-1)
             ztxt = F.normalize(ztxt, p=2, dim=-1)
 
         # ---- setup distributed ----
         if not dist.is_initialized():
             # fallback to single-GPU
-            print("[Single GPU] Computing logits")
             logits = zimg @ ztxt.t()
             logits = logits * self.t + self.b
 
-            print("[Single GPU] Computing slice_loglik")
             pos_ll, neg_ll = self.slice_loglik(logits, include_pos=True)
 
             pos_loss = -pos_ll.mean()  # mean loss for positives
@@ -171,19 +168,12 @@ class SigLIPLoss(nn.Module):
             loss = pos_loss + neg_loss  # total loss
             
             if return_details:
-                print("[Single GPU] Returning loss with details")
                 return loss, {"pos_loss": pos_loss.item(), "neg_loss": neg_loss.item()}
-            print("[Single GPU] Returning loss")
             return loss
 
         world_size = dist.get_world_size()
         rank = dist.get_rank()
         B = zimg.size(0)
-
-        # buffer for the rotating text embeddings
-        # start by copying the local ztxt into it
-        print(f"[Rank {rank}] Distributed mode: world_size={world_size}, batch_size={B}")
-        ztxt_rot = ztxt.clone()
 
         # accumulators (sum of per-sample losses)
         pos_sum = torch.tensor(0., device=zimg.device)
@@ -191,20 +181,20 @@ class SigLIPLoss(nn.Module):
         samples_cnt = torch.tensor(0, device=zimg.device)
 
         for k in range(world_size):
-            print(f"[Rank {rank}] Loop {k}/{world_size}")
-            if k > 0:
-                # this will overwrite ztxt_rot with the embeddings from rank=src
-                src = (rank + k) % world_size
-                print(f"[Rank {rank}] Broadcasting ztxt_rot from src={src}")
-                dist.broadcast(ztxt_rot, src=src)
-                print(f"[Rank {rank}] Finished broadcast for k={k}")
+            # buffer for the rotating text embeddings
+            # start by copying the local ztxt into it
+            ztxt_rot = ztxt.clone()
+            print(f"[Rank {rank}] Broadcasting ztxt_rot from src={k}")
+            dist.barrier()  # ensure all ranks are ready cloning
+            dist.broadcast(ztxt_rot, src=k)
+            print(f"[Rank {rank}] Finished broadcast for k={k}")
 
             print(f"[Rank {rank}] Computing logits for k={k}")
             # now compute this “slice” of the full N×N logits:
             logits = zimg @ ztxt_rot.t()  # (batch_size, batch_size)
             logits = logits * self.t + self.b
 
-            if k == 0:
+            if k == rank:
                 print(f"[Rank {rank}] Computing slice_loglik with positives for k={k}")
                 pos_ll, neg_ll = self.slice_loglik(logits, include_pos=True)
                 pos_sum += pos_ll.sum()  # accumulate positive log likelihood
