@@ -173,12 +173,10 @@ class SigLIPLoss(nn.Module):
 
         world_size = dist.get_world_size()
         rank = dist.get_rank()
-        B = zimg.size(0)
 
         # accumulators (sum of per-sample losses)
         pos_sum = torch.tensor(0., device=zimg.device)
         neg_sum = torch.tensor(0., device=zimg.device)
-        samples_cnt = torch.tensor(0, device=zimg.device)
 
         for k in range(world_size):
             # buffer for the rotating text embeddings
@@ -202,15 +200,15 @@ class SigLIPLoss(nn.Module):
                 pos_ll, neg_ll = self.slice_loglik(logits, include_pos=False)
                 neg_sum += neg_ll.sum()
 
-            samples_cnt += B  # accumulate the number of samples processed
-
         dist.all_reduce(pos_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(neg_sum, op=dist.ReduceOp.SUM)
-        dist.all_reduce(samples_cnt, op=dist.ReduceOp.SUM)
+
+        B = torch.tensor(zimg.size(0), device=zimg.device)
+        dist.all_reduce(B, op=dist.ReduceOp.SUM)
 
         # Compute the final loss
-        pos_loss = -pos_sum / samples_cnt
-        neg_loss = -neg_sum / samples_cnt
+        pos_loss = -pos_sum / B
+        neg_loss = -neg_sum / B
 
         # `total_loss` is now the total SigLIP loss summed over all examples and all ranks
         total_loss = pos_loss + neg_loss
