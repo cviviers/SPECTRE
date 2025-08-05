@@ -280,27 +280,9 @@ def main(cfg, accelerator: Accelerator):
                     batch['image'], batch['input_ids'], batch['attention_mask']
                 )
 
-                # Get outputs from all devices
-                image_embeddings_gathered = accelerator.gather(image_embeddings)
-                text_embeddings_gathered = accelerator.gather(text_embeddings)
-
-                # Replace the embeddings from the current process with the original embeddings
-                # to keep the computation graph intact
-                idx_start = get_global_rank() * cfg.train.batch_size_per_gpu
-                idx_end = (get_global_rank() + 1) * cfg.train.batch_size_per_gpu
-
-                if epoch == 0 and step == 0:
-                    accelerator.print(
-                        f"Image embeddings: {image_embeddings}",
-                        f"Image embeddings gathered: {image_embeddings_gathered[idx_start:idx_end]}",
-                    )
-
-                image_embeddings_gathered[idx_start:idx_end] = image_embeddings
-                text_embeddings_gathered[idx_start:idx_end] = text_embeddings
-
                 loss, details = criterion(
-                    image_embeddings_gathered, 
-                    text_embeddings_gathered,
+                    image_embeddings, 
+                    text_embeddings,
                     return_details=True,
                 )
 
