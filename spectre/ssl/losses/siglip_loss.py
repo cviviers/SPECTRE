@@ -184,18 +184,14 @@ class SigLIPLoss(nn.Module):
             # buffer for the rotating text embeddings
             # start by copying the local ztxt into it
             ztxt_rot = ztxt.clone()
-            print(f"[Rank {rank}] Broadcasting ztxt_rot from src={k}")
             dist.barrier()  # ensure all ranks are ready cloning
             dist.broadcast(ztxt_rot, src=k)
-            print(f"[Rank {rank}] Finished broadcast for k={k}")
 
-            print(f"[Rank {rank}] Computing logits for k={k}")
             # now compute this “slice” of the full N×N logits:
             logits = zimg @ ztxt_rot.t()  # (batch_size, batch_size)
             logits = logits * self.t + self.b
 
             if k == rank:
-                print(f"[Rank {rank}] Computing slice_loglik with positives for k={k}")
                 pos_ll, neg_ll = self.slice_loglik(logits, include_pos=True)
                 pos_sum += pos_ll.sum()  # accumulate positive log likelihood
                 neg_sum += neg_ll.sum()  # accumulate negative log likelihood
@@ -203,18 +199,14 @@ class SigLIPLoss(nn.Module):
             else:
                 # for all other slices, we only compute the negative log likelihood
                 # since the positive pairs are already included in the first slice
-                print(f"[Rank {rank}] Computing slice_loglik without positives for k={k}")
                 pos_ll, neg_ll = self.slice_loglik(logits, include_pos=False)
                 neg_sum += neg_ll.sum()
 
             samples_cnt += B  # accumulate the number of samples processed
-            print(f"[Rank {rank}] samples_cnt={samples_cnt.item()} after k={k}")
 
-        print(f"[Rank {rank}] Calling dist.all_reduce for pos_sum, neg_sum, samples_cnt")
         dist.all_reduce(pos_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(neg_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(samples_cnt, op=dist.ReduceOp.SUM)
-        print(f"[Rank {rank}] Finished all_reduce")
 
         # Compute the final loss
         pos_loss = -pos_sum / samples_cnt
@@ -224,7 +216,5 @@ class SigLIPLoss(nn.Module):
         total_loss = pos_loss + neg_loss
 
         if return_details:
-            print(f"[Rank {rank}] Returning total_loss with details")
             return total_loss, {"pos_loss": pos_loss.item(), "neg_loss": neg_loss.item()}
-        print(f"[Rank {rank}] Returning total_loss")
         return total_loss
