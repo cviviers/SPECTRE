@@ -17,3 +17,4 @@ from .resnet import (
     resnext50,
     resnext101,
 )
+from .eomt import EoMT
