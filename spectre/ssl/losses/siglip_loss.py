@@ -109,6 +109,10 @@ class SigLIPLoss(nn.Module):
         pos_sum = torch.tensor(0., device=zimg.device)
         neg_sum = torch.tensor(0., device=zimg.device)
 
+        # total number of samples across all ranks
+        B = torch.tensor(zimg.size(0), device=zimg.device)
+        dist.all_reduce(B, op=dist.ReduceOp.SUM)
+
         for k in range(world_size):
             # buffer for the rotating text embeddings
             # start by copying the local ztxt into it
@@ -122,6 +126,7 @@ class SigLIPLoss(nn.Module):
 
             if k == rank:
                 pos_ll, neg_ll = self.slice_loglik(logits, include_pos=True)
+                pos_ll, neg_ll = pos_ll / B, neg_ll / B  # normalize by batch size
                 pos_sum += pos_ll.sum()  # accumulate positive log likelihood
                 neg_sum += neg_ll.sum()  # accumulate negative log likelihood
 
@@ -134,12 +139,9 @@ class SigLIPLoss(nn.Module):
         dist.all_reduce(pos_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(neg_sum, op=dist.ReduceOp.SUM)
 
-        B = torch.tensor(zimg.size(0), device=zimg.device)
-        dist.all_reduce(B, op=dist.ReduceOp.SUM)
-
         # Compute the final loss
-        pos_loss = -pos_sum / B
-        neg_loss = -neg_sum / B
+        pos_loss = -pos_sum
+        neg_loss = -neg_sum
 
         # `total_loss` is now the total SigLIP loss summed over all examples and all ranks
         total_loss = pos_loss + neg_loss
