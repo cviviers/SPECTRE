@@ -1,0 +1,321 @@
+import os
+import argparse
+
+import torch
+import torch.nn as nn
+from accelerate import Accelerator
+from torch.optim import AdamW
+from monai.data import  DataLoader
+from monai.metrics import DiceMetric
+from monai.transforms import (
+    Compose, 
+    LoadImaged, 
+    EnsureChannelFirstd, 
+    ScaleIntensityRanged,
+    Orientationd,
+    Spacingd,
+    RandSpatialCropSamplesd,
+    GridPatchd,
+)
+
+import spectre.models as models
+from spectre.configs import load_config
+from spectre.transforms import CombineLabelsd
+from spectre.data import TotalSegmentatorDataset
+from spectre.data.total_segmentator import LABEL_GROUPS
+from spectre.utils import cosine_warmup_schedule, setup
+
+
+def get_args_parser() -> argparse.ArgumentParser:
+    """
+    Load arguments from config file. If argument is specified in command line, 
+    it will override the value in config file.
+    """
+    parser = argparse.ArgumentParser(description="Pretrain DINO")
+    parser.add_argument(
+        "--config_file",
+        type=str,
+        default="configs/classification_default.yaml",
+        help="path to config file",
+    )
+    parser.add_argument(
+        "opts",
+        default=None,
+        nargs=argparse.REMAINDER,
+        help="command line arguments to override config file",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="output",
+        help="output directory to save checkpoints and logs",
+    )
+    return parser
+
+
+def main(cfg, accelerator: Accelerator):
+
+    # Print config
+    accelerator.print(cfg)
+
+    # Define transforms
+    labels = [lbl for group in list(cfg.train.label_groups) for lbl in LABEL_GROUPS[group.lower()]]
+    train_transform = Compose([
+        LoadImaged(keys=["image"] + labels),
+        EnsureChannelFirstd(keys=["image"] + labels, channel_dim="no_channel"),
+        ScaleIntensityRanged(
+            keys=["image"],
+            a_min=-1000,
+            a_max=1000,
+            b_min=0.0,
+            b_max=1.0,
+            clip=True,
+        ),
+        Orientationd(keys=["image"] + labels, axcodes="RAS"),
+        Spacingd(
+            keys=["image"] + labels,
+            pixdim=(0.75, 0.75, 1.5),
+            mode=["bilinear"] + ["nearest"] * len(labels),
+        ),
+        CombineLabelsd(
+            keys=labels,
+            mask_key="label",
+            labels=list(range(1, len(labels) + 1)),
+        ),
+        RandSpatialCropSamplesd(
+            keys=["image", "label"],
+            roi_size=(128, 128, 64),
+            num_samples=12,
+            random_size=False,
+        ),
+    ])
+
+    val_transform = Compose([
+        LoadImaged(keys=["image"] + labels),
+        EnsureChannelFirstd(keys=["image"] + labels, channel_dim="no_channel"),
+        ScaleIntensityRanged(
+            keys=["image"],
+            a_min=-1000,
+            a_max=1000,
+            b_min=0.0,
+            b_max=1.0,
+            clip=True,
+        ),
+        Orientationd(keys=["image"] + labels, axcodes="RAS"),
+        Spacingd(
+            keys=["image"] + labels,
+            pixdim=(0.75, 0.75, 1.5),
+            mode=["bilinear"] + ["nearest"] * len(labels),
+        ),
+        CombineLabelsd(
+            keys=labels,
+            mask_key="label",
+            labels=list(range(1, len(labels) + 1)),
+        ),
+        GridPatchd(
+            keys=["image", "label"],
+            patch_size=(128, 128, 64),
+        ),
+    ])
+
+    # Get dataloader
+    train_dataset = TotalSegmentatorDataset(
+        data_dir=cfg.train.data_dir,
+        include_labels=True,
+        label_groups=cfg.train.label_groups,
+        transform=train_transform,
+        subset="train",
+    )
+    val_dataset = TotalSegmentatorDataset(
+        data_dir=cfg.train.data_dir,
+        include_labels=True,
+        label_groups=cfg.train.label_groups,
+        transform=val_transform,
+        subset="val",
+    )
+
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=cfg.train.batch_size_per_gpu,
+        num_workers=cfg.train.num_workers,
+        pin_memory=cfg.train.pin_memory,
+        persistent_workers=cfg.train.persistent_workers,
+        drop_last=cfg.train.drop_last,
+        shuffle=True,
+    )
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=cfg.train.batch_size_per_gpu,
+        num_workers=1,
+        pin_memory=cfg.train.pin_memory,
+        persistent_workers=cfg.train.persistent_workers,
+        drop_last=cfg.train.drop_last,
+        shuffle=False,
+    )
+    
+    # Initialize model (only support ViT models with EoMT for now)
+    if (
+        cfg.model.architecture in models.__dict__ 
+        and cfg.model.architecture.startswith("vit")
+    ):
+        backbone = models.__dict__[cfg.model.architecture](
+            global_pool='',  # Keep all tokens for EoMT
+            num_classes=0,  # No classification head for EoMT
+        )
+    else:
+        raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
+    
+    # Load pretrained weights and freeze backbone if specified
+    if cfg.model.pretrained_weights is not None:
+        msg = backbone.load_state_dict(torch.load(cfg.model.pretrained_weights), strict=False)
+        accelerator.print(f"Pretrained weights loaded with message: {msg}")
+        if cfg.model.linear_only:
+            for param in backbone.parameters():
+                    param.requires_grad = False
+    
+    model = models.EoMT(
+        backbone=backbone,
+        num_classes=5,
+        num_q=cfg.model.num_queries,
+        num_blocks=cfg.model.num_blocks,
+        masked_attn_enabled=cfg.model.masked_attn_enabled,
+    )
+
+    # Initialize criterion
+    criterion = nn.CrossEntropyLoss()
+
+    # Initialize optimizer
+    optimizer = AdamW(
+        model.parameters(),
+        lr=cfg.optim.lr,
+        betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
+    )
+
+    # Initialize Dice metric
+    dice = DiceMetric(
+        include_background=False,
+        num_classes=5,
+    )
+
+    # Prepare model, data, and optimizer for training
+    model, train_dataloader, val_dataloader, criterion, optimizer = accelerator.prepare(
+        model, train_dataloader, val_dataloader, criterion, optimizer
+    )
+
+    # Keep unwrapped model for easier access to individual components
+    unwrapped_model = accelerator.unwrap_model(model)
+
+    # Get number of training steps
+    # Dataloader already per GPU so no need to divide by number of processes
+    total_num_steps = cfg.optim.epochs * len(train_dataloader)
+    warmup_num_steps = cfg.optim.warmup_epochs * len(train_dataloader)
+
+    # Start training
+    global_step: int = 0
+    for epoch in range(cfg.optim.epochs):
+        model.train()
+        for batch in train_dataloader:
+
+            with accelerator.accumulate(model):
+
+                # Update learning rate
+                lr = cosine_warmup_schedule(
+                    global_step,
+                    max_steps=total_num_steps,
+                    start_value=cfg.optim.lr,
+                    end_value=cfg.optim.min_lr,
+                    warmup_steps=warmup_num_steps,
+                    warmup_start_value=0.0,
+                )
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = lr
+
+                # Forward pass
+                output = model(batch["image"])
+                loss = criterion(output, batch["label"])
+
+                # Backward pass
+                accelerator.backward(loss)
+
+                # Update model
+                if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(
+                        unwrapped_model.parameters(),
+                        cfg.optim.clip_grad_norm
+                    )
+                optimizer.step()
+
+                # Log loss, lr, and weight decay
+                if global_step % cfg.train.log_freq == 0:
+                    accelerator.print(
+                        f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
+                        f"Step {global_step + 1}/{total_num_steps}, "
+                        f"Loss: {loss.item():8f}, "
+                        f"LR: {lr}, "
+                    )
+                    accelerator.log(
+                        {
+                            "loss": loss.item(),
+                            "lr": lr,
+                        },
+                        step=global_step,
+                    )
+                
+                # Zero gradients
+                optimizer.zero_grad()
+
+                # Update global step
+                global_step += 1
+
+        # Evaluate model
+        model.eval()
+        best_dice: float = 0.0
+        with torch.no_grad():
+            for batch in val_dataloader:
+                output = model(batch["image"])
+
+                # Gather predictions and labels across all devices
+                y_pred = accelerator.gather(output)
+                y_true = accelerator.gather(batch["label"])
+
+                # Upsample predictions to match labels
+                y_pred = nn.functional.interpolate(
+                    y_pred.unsqueeze(1),
+                    size=batch["label"].shape[2:],
+                    mode="trilinear",
+                    align_corners=False,
+                ).squeeze(1)
+
+                # Take the argmax to get class predictions
+                y_pred = torch.argmax(y_pred, dim=1)
+
+                # Compute Dice score
+                dice(y_pred=y_pred, y=y_true)
+
+        # Get predictions and labels form all devices
+        val_dice = dice.aggregate().item()
+        dice.reset()
+
+        accelerator.print(f"Validation Dice: {val_dice:.4f}")
+        accelerator.log({+
+            "val_dice": val_dice,
+        }, step=global_step - 1)
+
+        if val_dice > best_dice:
+            best_dice = val_dice
+            if accelerator.is_main_process:
+                torch.save(
+                    unwrapped_model.state_dict(), 
+                    os.path.join(cfg.train.output_dir, f"best_model.pt")
+                )
+        accelerator.wait_for_everyone()
+
+    # Make sure the trackers are finished before exiting
+    accelerator.end_training()
+
+
+if __name__ == "__main__":
+    parser = get_args_parser()
+    args = parser.parse_args()
+    cfg, accelerator = setup(args, load_config("total_segmentator"))
+    main(cfg, accelerator)
