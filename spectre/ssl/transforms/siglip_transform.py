@@ -10,12 +10,11 @@ from monai.transforms import (
     Spacingd,
     ResizeWithPadOrCropd,
     CastToTyped,
-    RandSpatialCropd,
     RandGridPatchd,
     DeleteItemsd,
 )
 
-from spectre.transforms import SWSpatialCropSamplesd, GenerateReportTransform
+from spectre.transforms import GenerateReportTransform
 
 
 class SigLIPTransform(Compose):
@@ -46,19 +45,6 @@ class SigLIPTransform(Compose):
                 Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
                 ResizeWithPadOrCropd(keys=("image",), spatial_size=global_size),
                 CastToTyped(keys=("image",), dtype=getattr(torch, dtype)),
-                
-                # Crop the volume into equal non-overlapping samples
-                # RandSpatialCropd(
-                #     keys=("image",),
-                #     roi_size=(384, 384, 256),
-                #     random_size=False,
-                #     random_center=True,
-                # ),
-                # SWSpatialCropSamplesd(
-                #     keys=("image",),
-                #     patch_size=input_size,
-                #     overlap=0.0,
-                # ),
                 RandGridPatchd(
                     keys=("image",),
                     patch_size=input_size,
