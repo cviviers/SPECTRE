@@ -86,7 +86,6 @@ class EoMT(nn.Module):
 
         patch_size = self.backbone.patch_embed.patch_size
         num_upscale_stages = compute_upscale_stages(patch_size, min_size=4)
-        print(f"Upscale stages per dimension: {num_upscale_stages}")
 
         # Build per-stage scale factors list
         max_stages = max(num_upscale_stages)
