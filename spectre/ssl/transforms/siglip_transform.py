@@ -12,6 +12,7 @@ from monai.transforms import (
     CastToTyped,
     RandSpatialCropd,
     RandGridPatchd,
+    DeleteItemsd,
 )
 
 from spectre.transforms import SWSpatialCropSamplesd, GenerateReportTransform
@@ -73,5 +74,7 @@ class SigLIPTransform(Compose):
                     likelihood_original=0.5,
                     drop_chance=0.3,
                 ),
+                # Delete findings, impressions and icd10 to avoid errors with collate_fn
+                DeleteItemsd(keys=("findings", "impressions", "icd10")),
             ]
         )
