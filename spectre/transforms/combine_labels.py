@@ -47,10 +47,15 @@ class CombineLabelsd(MapTransform):
             else:
                 current_label = idx + 1
 
-            if combined_mask is None and type(d[key]) is torch.Tensor:
+            if combined_mask is None and isinstance(d[key], torch.Tensor):
                 combined_mask = torch.zeros_like(d[key], dtype=d[key].dtype)
-            elif combined_mask is None and type(d[key]) is np.ndarray:
+            elif combined_mask is None and isinstance(d[key], np.ndarray):
                 combined_mask = np.zeros_like(d[key], dtype=d[key].dtype)
+            elif combined_mask is None:
+                raise TypeError(
+                    f"Unsupported type for key '{key}': {type(d[key])}. "
+                    "Expected torch.Tensor or np.ndarray."
+                )
 
             combined_mask[d[key] > 0] = current_label
 
