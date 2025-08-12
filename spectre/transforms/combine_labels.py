@@ -59,6 +59,9 @@ class CombineLabelsd(MapTransform):
 
             combined_mask[d[key] > 0] = current_label
 
+            # Remove the original key from the dictionary
+            d.pop(key)
+
         d[self.mask_key] = combined_mask
 
         return d
