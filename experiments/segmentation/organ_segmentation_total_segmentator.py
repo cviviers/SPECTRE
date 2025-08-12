@@ -10,6 +10,7 @@ from monai.metrics import DiceMetric
 from monai.transforms import (
     Compose, 
     LoadImaged, 
+    CastToTyped,
     EnsureChannelFirstd, 
     ScaleIntensityRanged,
     Orientationd,
@@ -31,7 +32,7 @@ def get_args_parser() -> argparse.ArgumentParser:
     Load arguments from config file. If argument is specified in command line, 
     it will override the value in config file.
     """
-    parser = argparse.ArgumentParser(description="Pretrain DINO")
+    parser = argparse.ArgumentParser(description="Train Total Segmentator")
     parser.add_argument(
         "--config_file",
         type=str,
@@ -62,6 +63,7 @@ def main(cfg, accelerator: Accelerator):
     labels = [lbl for group in list(cfg.train.label_groups) for lbl in LABEL_GROUPS[group.lower()]]
     train_transform = Compose([
         LoadImaged(keys=["image"] + labels),
+        CastToTyped(keys=labels, dtype=torch.uint8),
         EnsureChannelFirstd(keys=["image"] + labels, channel_dim="no_channel"),
         ScaleIntensityRanged(
             keys=["image"],
@@ -92,6 +94,7 @@ def main(cfg, accelerator: Accelerator):
 
     val_transform = Compose([
         LoadImaged(keys=["image"] + labels),
+        CastToTyped(keys=labels, dtype=torch.uint8),
         EnsureChannelFirstd(keys=["image"] + labels, channel_dim="no_channel"),
         ScaleIntensityRanged(
             keys=["image"],
