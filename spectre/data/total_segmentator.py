@@ -55,6 +55,10 @@ LABEL_GROUPS = {
         "vertebrae_L3", "vertebrae_L4", "vertebrae_L5", "vertebrae_C1", "vertebrae_C2",
         "vertebrae_C3", "vertebrae_C4", "vertebrae_C5", "vertebrae_C6", "vertebrae_C7",
     ],
+    "lungs": [
+        "lung_lower_lobe_left", "lung_lower_lobe_right", "lung_middle_lobe_right", 
+        "lung_upper_lobe_left", "lung_upper_lobe_right"
+    ]
 }
 
 def _initialize_dataset(
