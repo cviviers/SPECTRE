@@ -27,7 +27,11 @@ from spectre.transforms import CombineLabelsd
 from spectre.losses import MaskClassificationLoss
 from spectre.data import TotalSegmentatorDataset
 from spectre.data.total_segmentator import LABEL_GROUPS
-from spectre.utils import cosine_warmup_schedule, setup
+from spectre.utils import (
+    setup,
+    cosine_warmup_schedule,
+    compute_backbone_lr_multipliers,
+)
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -86,11 +90,6 @@ def main(cfg, accelerator: Accelerator):
             keys=["image"] + labels,
             spatial_size=(128, 128, 64),
         ),  # will only pad the smaller images
-        # CombineLabelsd(
-        #     keys=labels,
-        #     mask_key="label",
-        #     labels=list(range(1, len(labels) + 1)),
-        # ),
         RandSpatialCropSamplesd(
             keys=["image"] + labels,
             roi_size=(128, 128, 64),
@@ -121,11 +120,6 @@ def main(cfg, accelerator: Accelerator):
             keys=["image"] + labels,
             spatial_size=(128, 128, 64),
         ),  # will only pad the smaller images
-        # CombineLabelsd(
-        #     keys=labels,
-        #     mask_key="label",
-        #     labels=list(range(1, len(labels) + 1)),
-        # ),
         GridPatchd(
             keys=["image"] + labels,
             patch_size=(128, 128, 64),
@@ -208,9 +202,17 @@ def main(cfg, accelerator: Accelerator):
     )
 
     # Initialize optimizer
+    param_to_mult = compute_backbone_lr_multipliers(model, cfg.optim.llrd)
+    mult_to_params = {}
+    for n, p in model.named_parameters():
+        mult_to_params.setdefault(param_to_mult.get(n, 1.0), []).append(p)
+
     optimizer = AdamW(
-        model.parameters(),
-        lr=cfg.optim.lr,
+        [{
+            "params": params, 
+            "lr": cfg.optim.lr * mult, 
+            "multiplier": mult
+        } for mult, params in mult_to_params.items()],
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
 
@@ -251,7 +253,7 @@ def main(cfg, accelerator: Accelerator):
                     warmup_start_value=0.0,
                 )
                 for param_group in optimizer.param_groups:
-                    param_group["lr"] = lr
+                    param_group["lr"] = lr * param_group["multiplier"]
 
                 # Forward pass
                 imgs = batch["image"]

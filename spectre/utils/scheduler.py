@@ -210,4 +210,47 @@ class CosineWarmupScheduler(torch.optim.lr_scheduler.LambdaLR):
             warmup_end_value=self.warmup_end_value,
             period=self.period,
         )
-    
+
+
+def compute_backbone_lr_multipliers(model, llrd_factor):
+    """
+    Compute LR multipliers for backbone params using Layer-wise LR Decay (LLRD).
+
+    Args:
+        model: nn.Module
+        llrd_factor: decay factor per layer/block
+
+    Returns:
+        dict mapping parameter tensors -> multiplier
+    """
+    backbone_params = [(n, p) for n, p in model.named_parameters() if "backbone." in n]
+    other_params = [(n, p) for n, p in model.named_parameters() if "backbone." not in n]
+
+    # Walk from last backbone param to first, applying decay on new blocks
+    multiplier = 1.0
+    last_block_idx = None
+    param_to_mult = {}
+
+    for n, _ in reversed(backbone_params):
+        block_idx = None
+        if "backbone.blocks." in n:
+            try:
+                block_idx = int(n.split("backbone.blocks.")[1].split(".")[0])
+            except ValueError:
+                pass
+
+        if block_idx is not None:
+            if last_block_idx is None:
+                last_block_idx = block_idx
+            elif block_idx < last_block_idx:
+                multiplier *= llrd_factor
+                last_block_idx = block_idx
+
+        # Assign multiplier to this param
+        param_to_mult[n] = multiplier
+
+    # Non-backbone params → multiplier 1.0
+    for n, _ in other_params:
+        param_to_mult[n] = 1.0
+
+    return param_to_mult
