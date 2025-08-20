@@ -1,5 +1,4 @@
 import os
-import random
 from pathlib import Path
 from typing import Callable, List, Dict
 
@@ -20,14 +19,13 @@ def _initialize_dataset(
     subset: str = "train",
     fraction: float = 1.0,
 ) -> List[Dict[str, str]]:
-    
-    image_paths = Path(data_dir).glob(os.path.join("merlinabdominalctdataset", "merlin_data", "*.nii.gz"))
+
+    image_paths = sorted(Path(data_dir).glob(os.path.join(
+        "merlinabdominalctdataset", "merlin_data", "*.nii.gz")))
 
     if 0. < fraction < 1.0:
-        image_paths = sorted(image_paths)
         n_keep = int(len(list(image_paths)) * fraction)
-        random.seed(42)  # for reproducibility
-        image_paths = random.sample(image_paths, n_keep)
+        image_paths = image_paths[:n_keep]
 
     text_path = Path(data_dir) / "merlinabdominalctdataset" / "reports_final_updated.xlsx"
     reports = pd.read_excel(text_path)

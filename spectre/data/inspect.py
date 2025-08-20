@@ -1,5 +1,4 @@
 import os
-import random
 from pathlib import Path
 from typing import Callable, List, Dict
 
@@ -19,13 +18,11 @@ def _initialize_dataset(
     fraction: float = 1.0
 ) -> List[Dict[str, str]]:
     
-    image_paths = Path(data_dir).glob(os.path.join('inspect2', "CTPA", "*.nii.gz"))
+    image_paths = sorted(Path(data_dir).glob(os.path.join('inspect2', "CTPA", "*.nii.gz")))
 
     if 0. < fraction < 1.0:
-        image_paths = sorted(image_paths)
         n_keep = int(len(list(image_paths)) * fraction)
-        random.seed(42)  # for reproducibility
-        image_paths = random.sample(image_paths, n_keep)
+        image_paths = image_paths[:n_keep]
 
     if include_reports:
         import pandas as pd

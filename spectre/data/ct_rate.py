@@ -1,5 +1,4 @@
 import os
-import random
 from pathlib import Path
 from typing import Callable, Dict, List
 
@@ -16,15 +15,11 @@ def _initialize_dataset(
     fraction: float = 1.0,
 ) -> List[Dict[str, str]]:
     
-    image_paths = Path(data_dir).glob(os.path.join('dataset', subset, "*", "*", "*.nii.gz"))
+    image_paths = sorted(Path(data_dir).glob(os.path.join('dataset', subset, "*", "*", "*.nii.gz")))
 
     if 0. < fraction < 1.0:
-        # make fraction on patient level
-        patients = sorted({p.parts[p.parts.index(subset) + 1] for p in image_paths})
-        n_keep = int(len(patients) * fraction)
-        random.seed(42)  # for reproducibility
-        selected_patients = set(random.sample(patients, n_keep))
-        image_paths = [p for p in image_paths if p.parts[p.parts.index(subset) + 1] in selected_patients]
+        n_keep = int(len(image_paths) * fraction)
+        image_paths = image_paths[:n_keep]
 
     if include_reports:
         import pandas as pd
