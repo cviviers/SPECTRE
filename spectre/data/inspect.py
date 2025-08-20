@@ -22,6 +22,7 @@ def _initialize_dataset(
     image_paths = Path(data_dir).glob(os.path.join('inspect2', "CTPA", "*.nii.gz"))
 
     if 0. < fraction < 1.0:
+        image_paths = sorted(image_paths)
         n_keep = int(len(list(image_paths)) * fraction)
         random.seed(42)  # for reproducibility
         image_paths = random.sample(image_paths, n_keep)
