@@ -5,8 +5,7 @@ from typing import Callable, List, Dict, Union
 import pandas as pd
 from monai.data import Dataset
 
-from spectre.data.cache_dataset import CacheDataset
-from spectre.data.gds_dataset import GDSDataset
+from spectre.data._base_datasets import PersistentDataset, GDSDataset
 
 
 def _initialize_dataset(
@@ -57,7 +56,7 @@ class SinoCTDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class SinoCTCacheDataset(CacheDataset):
+class SinoCTPersistentDataset(PersistentDataset):
     def __init__(
         self, 
         data_dir: str, 

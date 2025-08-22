@@ -36,6 +36,7 @@ optim:
 model:
   architecture: vit_base_patch16_128
   pretrained_weights: null
+  use_feature_comb: true
   feature_comb_embed_dim: 768
   feature_comb_num_layers: 4
   feature_comb_num_heads: 12

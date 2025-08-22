@@ -4,8 +4,7 @@ from typing import Callable, List, Dict
 
 from monai.data import Dataset
 
-from spectre.data.cache_dataset import CacheDataset
-from spectre.data.gds_dataset import GDSDataset
+from spectre.data._base_datasets import PersistentDataset, GDSDataset
 
 
 def parse_name(image_path):
@@ -56,7 +55,7 @@ class InspectDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class InspectCacheDataset(CacheDataset):
+class InspectPersistentDataset(PersistentDataset):
     def __init__(
         self, 
         data_dir: str,

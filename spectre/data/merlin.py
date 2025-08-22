@@ -5,9 +5,7 @@ from typing import Callable, List, Dict
 import pandas as pd
 from monai.data import Dataset
 
-from spectre.data.cache_dataset import CacheDataset
-from spectre.data.gds_dataset import GDSDataset
-
+from spectre.data._base_datasets import PersistentDataset, GDSDataset
 
 def parse_name(image_path):
     return image_path.name.replace(".nii.gz", "")
@@ -80,7 +78,7 @@ class MerlinDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class MerlinCacheDataset(CacheDataset):
+class MerlinPersistentDataset(PersistentDataset):
     def __init__(
         self, 
         data_dir: str,

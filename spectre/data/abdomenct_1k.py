@@ -4,8 +4,7 @@ from typing import Callable, Dict, List
 
 from monai.data import Dataset
 
-from spectre.data.cache_dataset import CacheDataset
-from spectre.data.gds_dataset import GDSDataset
+from spectre.data._base_datasets import PersistentDataset, GDSDataset
 
 
 def _initialize_dataset(
@@ -39,7 +38,7 @@ class AbdomenCT1KDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class AbdomenCT1KCacheDataset(CacheDataset):
+class AbdomenCT1KPersistentDataset(PersistentDataset):
     def __init__(
         self, 
         data_dir: str,

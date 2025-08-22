@@ -1,8 +1,8 @@
 import os
 from typing import Union, Callable, Optional, List
 
+import monai.data as data
 from torch.utils.data import ConcatDataset
-from monai.data import DataLoader
 
 from spectre.utils.distributed import get_global_rank
 
@@ -24,7 +24,7 @@ def get_dataloader(
     collate_fn: Optional[Callable] = None,
     drop_last: bool = True,
     persistent_workers: bool = True,
-) -> DataLoader:
+) -> data.DataLoader:
     """
     Get dataloader for training.
     """
@@ -32,250 +32,80 @@ def get_dataloader(
     if isinstance(datasets, str):
         datasets = [datasets]
 
+    # Validate constraints
     if include_reports:
-        assert set(datasets).issubset({"ct_rate", "merlin", "inspect"}), (
-            "When include_reports is True, only 'ct_rate', 'merlin', and 'inspect' datasets are allowed.")
+        assert set(datasets).issubset({"ct_rate", "merlin", "inspect"}), \
+            "When include_reports=True, only 'ct_rate', 'merlin', and 'inspect' are allowed."
     if include_labels:
-        assert set(datasets).issubset({"abdomen_atlas", "abdomenct_1k"}), (
-            "When include_labels is True, only 'abdomen_atlas' and 'abdomenct_1k' datasets are allowed.")
+        assert set(datasets).issubset({"abdomen_atlas", "abdomenct_1k"}), \
+            "When include_labels=True, only 'abdomen_atlas' and 'abdomenct_1k' are allowed."
     if use_gds:
-        assert cache_dataset, (
-            "GDS datasets are only available with cache_dataset=True. "
-            "Please set cache_dataset=True to use GDS datasets."
-        )
+        assert cache_dataset, "GDS requires cache_dataset=True."
+
+    # Dataset configurations
+    DATASET_CONFIGS = {
+        "ct_rate": {"folder": "CT-RATE", "base_name": "CTRate",
+            "extra": {"include_reports": include_reports, "fraction": fraction}},
+        "inspect": {"folder": "INSPECT", "base_name": "Inspect",
+            "extra": {"include_reports": include_reports, "fraction": fraction}},
+        "merlin": {"folder": "MERLIN", "base_name": "Merlin",
+            "extra": {"include_reports": include_reports, "fraction": fraction}},
+        "nlst": {"folder": "NLST", "base_name": "Nlst"},
+        "amos": {"folder": "Amos", "base_name": "Amos"},
+        "abdomen_atlas": {"folder": "AbdomenAtlas1.0Mini", "base_name": "AbdomenAtlas",
+            "extra": {"include_labels": include_labels}},
+        "panorama": {"folder": "PANORAMA", "base_name": "Panorama"},
+        "abdomenct_1k": {"folder": "AbdomenCT-1K", "base_name": "AbdomenCT1K",
+            "extra": {"include_labels": include_labels}},
+    }
     
     datasets_list = []
-    for dataset in datasets:
-        # CT-RATE dataset with paired chest CT and radiology reports
-        if dataset == "ct_rate":
-            kwargs = {
-                "data_dir": os.path.join(data_dir, "CT-RATE"),
-                "include_reports": include_reports,
-                "transform": transform,
-                "fraction": fraction,
-            }
-            if cache_dataset:
-                if use_gds:
-                    from spectre.data import CTRateGDSDataset
-                    datasets_list.append(CTRateGDSDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "CT-RATE"),
-                        device=get_global_rank(),
-                    ))
-                else:
-                    from spectre.data import CTRateCacheDataset
-                    datasets_list.append(CTRateCacheDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "CT-RATE")
-                    ))
-            else:
-                from spectre.data import CTRateDataset
-                datasets_list.append(CTRateDataset(**kwargs))
+    for ds in datasets:
+        if ds.lower() not in DATASET_CONFIGS:
+            raise NotImplementedError(f"Dataset {ds} not implemented.")
 
-        # INSPECT dataset with paired chest CTPA and radiology reports
-        elif dataset == "inspect":
-            kwargs = {
-                "data_dir": os.path.join(data_dir, "INSPECT"),
-                "include_reports": include_reports,
-                "transform": transform,
-                "fraction": fraction,
-            }
-            if cache_dataset:
-                if use_gds:
-                    from spectre.data import InspectGDSDataset
-                    datasets_list.append(InspectGDSDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "INSPECT"),
-                        device=get_global_rank(),
-                    ))
-                else:
-                    from spectre.data import InspectCacheDataset
-                    datasets_list.append(InspectCacheDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "INSPECT")
-                    ))
+        cfg = DATASET_CONFIGS[ds.lower()]
+        folder = cfg["folder"]
+        extra_args = cfg.get("extra", {})
 
-            else:
-                from spectre.data import InspectDataset
-                datasets_list.append(InspectDataset(**kwargs))
+        kwargs = {
+            "data_dir": os.path.join(data_dir, folder),
+            "transform": transform,
+            **extra_args,
+        }
 
-        # MERLIN dataset with paired abdominal CT and radiology reports
-        elif dataset == "merlin":
-            kwargs = {
-                "data_dir": os.path.join(data_dir, "MERLIN"),
-                "include_reports": include_reports,
-                "transform": transform,
-                "fraction": fraction,
-            }
-            if cache_dataset:
-                if use_gds:
-                    from spectre.data import MerlinGDSDataset
-                    datasets_list.append(MerlinGDSDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "MERLIN"),
-                        device=get_global_rank(),
-                    ))
-                else:
-                    from spectre.data import MerlinCacheDataset
-                    datasets_list.append(MerlinCacheDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "MERLIN")
-                    ))
-            else:
-                from spectre.data import MerlinDataset
-                datasets_list.append(MerlinDataset(**kwargs))
+        base_name = cfg["base_name"]
+        class_suffix = "Dataset"
+        if cache_dataset:
+            class_suffix = "GDSDataset" if use_gds else "PersistentDataset"
 
-        # NLST dataset with low-dose chest CT
-        elif dataset == "nlst":
-            kwargs = {
-                "data_dir": os.path.join(data_dir, "NLST"),
-                "transform": transform,
-            }
-            if cache_dataset:
-                if use_gds:
-                    from spectre.data import NlstGDSDataset
-                    datasets_list.append(NlstGDSDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "NLST"),
-                        device=get_global_rank(),
-                    ))
-                else:
-                    from spectre.data import NlstCacheDataset
-                    datasets_list.append(NlstCacheDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "NLST")
-                    ))
-            else:
-                from spectre.data import NlstDataset
-                datasets_list.append(NlstDataset(**kwargs))
-        
-        # Amos dataset with abdominal CT
-        elif dataset == "amos":
-            kwargs = {
-                "data_dir": os.path.join(data_dir, "Amos"),
-                "transform": transform,
-            }
-            if cache_dataset:
-                if use_gds:
-                    from spectre.data import AmosGDSDataset
-                    datasets_list.append(AmosGDSDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "Amos"),
-                        device=get_global_rank(),
-                    ))
-                else:
-                    from spectre.data import AmosCacheDataset
-                    datasets_list.append(AmosCacheDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "Amos")
-                    ))
-            else:
-                from spectre.data import AmosDataset
-                datasets_list.append(AmosDataset(**kwargs))
-        
-        # AbdomenAtlas 1.0 Mini dataset with abdominal CT and organ segmentations
-        elif dataset == "abdomen_atlas":
-            kwargs = {
-                "data_dir": os.path.join(data_dir, "AbdomenAtlas1.0Mini"),
-                "include_labels": include_labels,
-                "transform": transform,
-            }
-            if cache_dataset:
-                if use_gds:
-                    from spectre.data import AbdomenAtlasGDSDataset
-                    datasets_list.append(AbdomenAtlasGDSDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "AbdomenAtlas1.0Mini"),
-                        device=get_global_rank(),
-                    ))
-                else:
-                    from spectre.data import AbdomenAtlasCacheDataset
-                    datasets_list.append(AbdomenAtlasCacheDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "AbdomenAtlas1.0Mini")
-                    ))
-            else:
-                from spectre.data import AbdomenAtlasDataset
-                datasets_list.append(AbdomenAtlasDataset(**kwargs))
-        
-        # Panorama dataset with abdominal contrast-enhanced CT
-        elif dataset == "panorama":
-            kwargs = {
-                "data_dir": os.path.join(data_dir, "PANORAMA"),
-                "transform": transform,
-            }
-            if cache_dataset:
-                if use_gds:
-                    from spectre.data import PanoramaGDSDataset
-                    datasets_list.append(PanoramaGDSDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "PANORAMA"),
-                        device=get_global_rank(),
-                    ))
-                else:
-                    from spectre.data import PanoramaCacheDataset
-                    datasets_list.append(PanoramaCacheDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "PANORAMA")
-                    ))
-            else:
-                from spectre.data import PanoramaDataset
-                datasets_list.append(PanoramaDataset(**kwargs))
-        
-        # AbdomenCT-1k dataset with abdominal CT and organ segmentations
-        elif dataset == "abdomenct_1k":
-            kwargs = {
-                "data_dir": os.path.join(data_dir, "AbdomenCT-1K"),
-                "include_labels": include_labels,
-                "transform": transform,
-            }
-            if cache_dataset:
-                if use_gds:
-                    from spectre.data import AbdomenCT1KGDSDataset
-                    datasets_list.append(AbdomenCT1KGDSDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "AbdomenCT-1K"),
-                        device=get_global_rank(),
-                    ))
-                else:
-                    from spectre.data import AbdomenCT1KCacheDataset
-                    datasets_list.append(AbdomenCT1KCacheDataset(
-                        **kwargs, 
-                        cache_dir=os.path.join(cache_dir, "AbdomenCT-1K")
-                    ))
-            else:
-                from spectre.data import AbdomenCT1KDataset
-                datasets_list.append(AbdomenCT1KDataset(**kwargs))
+        class_name = f"{base_name}{class_suffix}"
+        DatasetClass = getattr(__import__("spectre.data", from_list=[class_name]), class_name)
 
-        else:
-            raise NotImplementedError(f"Dataset {dataset} not implemented.")
-    
-    if len(datasets_list) == 0:
-        raise ValueError("No datasets found. Please check the dataset names.")
-    elif len(datasets_list) == 1:
-        dataset = datasets_list[0]
-    else:
-        dataset = ConcatDataset(datasets_list)
-    
-    if collate_fn is not None:
-        dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            pin_memory=pin_memory,
-            shuffle=shuffle,
-            collate_fn=collate_fn,
-            drop_last=drop_last,
-            persistent_workers=persistent_workers,
-        )
-    else:
-        dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            pin_memory=pin_memory,
-            shuffle=shuffle,
-            drop_last=drop_last,
-            persistent_workers=persistent_workers,
-        )  # Cannot pass None to use MONAI collate_fn
-    return dataloader
+        if cache_dataset:
+            kwargs["cache_dir"] = os.path.join(cache_dir, folder)
+            if use_gds:
+                kwargs["device"] = get_global_rank()
+
+        datasets_list.append(DatasetClass(**kwargs))
+
+    dataset = datasets_list[0] if len(datasets_list) == 1 else ConcatDataset(datasets_list)
+
+    loader_cls = getattr(data, "ThreadDataLoader" if use_gds else "DataLoader")
+    loader_kwargs = {
+        "dataset": dataset,
+        "batch_size": batch_size,
+        "num_workers": num_workers,
+        "shuffle": shuffle,
+        "drop_last": drop_last,
+    }
+
+    if not use_gds:
+        loader_kwargs.update({
+            "pin_memory": pin_memory, 
+            "persistent_workers": persistent_workers
+        })
+    if collate_fn:
+        loader_kwargs["collate_fn"] = collate_fn
+
+    return loader_cls(**loader_kwargs)

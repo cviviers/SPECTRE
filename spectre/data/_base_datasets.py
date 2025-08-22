@@ -7,14 +7,14 @@ from copy import deepcopy
 from pathlib import Path
 
 import torch
+import monai.data as data
 from monai.utils import look_up_option
-from monai.data import PersistentDataset
 
 
 SUPPORTED_PICKLE_MOD = {"pickle": pickle}
 
 
-class CacheDataset(PersistentDataset):
+class PersistentDataset(data.PersistentDataset):
     """
     Overwrite MONAI's PersistentDataset to support PyTorch 2.6.
     """
@@ -95,3 +95,17 @@ class CacheDataset(PersistentDataset):
         except PermissionError:  # project-monai/monai issue #3613
             pass
         return _item_transformed
+
+
+class GDSDataset(data.GDSDataset):
+    """
+    Overwrite MONAI's GDSDataset to support PyTorch 2.6.
+    """
+    def __init__(self, *args, pickle_protocol=pickle.HIGHEST_PROTOCOL, **kwargs):
+        super().__init__(*args, pickle_protocol=pickle_protocol, **kwargs)
+    
+    def _load_meta_cache(self, meta_hash_file_name):
+        if meta_hash_file_name in self._meta_cache:
+            return self._meta_cache[meta_hash_file_name]
+        else:
+            return torch.load(self.cache_dir / meta_hash_file_name, weights_only=False)

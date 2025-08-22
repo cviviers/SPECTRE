@@ -87,6 +87,7 @@ def main(cfg, accelerator: Accelerator):
         use_gds=cfg.train.use_gds,
         transform=SigLIPTransform(
             dtype="float16" if cfg.train.load_fp16 else "float32",
+            use_gds=cfg.train.use_gds,
         ),
         fraction=cfg.train.data_fraction,
         batch_size=cfg.train.batch_size_per_gpu,
@@ -117,15 +118,18 @@ def main(cfg, accelerator: Accelerator):
         for n, p in image_backbone.named_parameters():
             p.requires_grad = False  # freeze image backbone
 
-    image_feature_comb = models.FeatureVisionTransformer(
-        num_patches=36,
-        patch_dim=image_backbone_embed_dim * 2,  # cls token + avg pooling (C. Jose et al. 2024)
-        num_classes=0,
-        global_pool='',
-        embed_dim=cfg.model.feature_comb_embed_dim,
-        depth=cfg.model.feature_comb_num_layers,
-        num_heads=cfg.model.feature_comb_num_heads,
-    )
+    if cfg.model.use_feature_comb:
+        image_feature_comb = models.FeatureVisionTransformer(
+            num_patches=36,
+            patch_dim=image_backbone_embed_dim * 2,  # cls token + avg pooling (C. Jose et al. 2024)
+            num_classes=0,
+            global_pool='',
+            embed_dim=cfg.model.feature_comb_embed_dim,
+            depth=cfg.model.feature_comb_num_layers,
+            num_heads=cfg.model.feature_comb_num_heads,
+        )
+    else:
+        image_feature_comb = None
     
     # Initialize text backbone
     # TODO: add support for other text backbones
@@ -200,11 +204,15 @@ def main(cfg, accelerator: Accelerator):
             )
 
     # Initialize the SigLIP model
+    if cfg.model.use_feature_comb:
+        image_embed_dim = cfg.model.feature_comb_embed_dim * 2
+    else:
+        image_embed_dim = image_backbone_embed_dim * 2
     model = SigLIP(
         image_backbone=image_backbone,
         text_backbone=text_backbone,
         image_feature_comb=image_feature_comb,
-        image_embed_dim=image_feature_comb.embed_dim * 2,
+        image_embed_dim=image_embed_dim,
         text_embed_dim=text_backbone_embed_dim,
         projection_dim=cfg.model.projection_dim,
         backbone_is_class_token=False,  # backbone returns all tokens
