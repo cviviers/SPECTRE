@@ -1,7 +1,7 @@
 train:
   batch_size_per_gpu: 16
   grad_accum_steps: 1
-  data_dir: /data/Totalsegmentator_dataset_v201
+  data_dir: /data/Totalsegmentor_dataset_v201
   label_groups: 
     - lungs
   output_dir: .
@@ -12,8 +12,8 @@ train:
   pin_memory: true
   persistent_workers: true
   drop_last: true
-  cache_dataset: false
-  cache_dir: null
+  cache_dataset: true
+  cache_dir: /data/Totalsegmentor_dataset_v201_cache
   log_wandb: true
   log_freq: 1
 optim:
