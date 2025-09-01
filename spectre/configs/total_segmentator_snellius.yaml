@@ -1,5 +1,5 @@
 train:
-  batch_size_per_gpu: 14
+  batch_size_per_gpu: 30
   grad_accum_steps: 1
   data_dir: /data/Totalsegmentor_dataset_v201
   label_groups: 
@@ -17,7 +17,7 @@ train:
   log_wandb: true
   log_freq: 1
 val:
-  batch_size_per_gpu: 24
+  batch_size_per_gpu: 30
   num_workers: 1
   pin_memory: true
   persistent_workers: true
