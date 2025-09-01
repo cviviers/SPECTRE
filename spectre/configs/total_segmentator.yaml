@@ -29,7 +29,7 @@ optim:
   adamw_beta2: 0.999
 model:
   architecture: vit_small_patch16_128
-  pretrained_weights: null
+  pretrained_weights: /weights/siglip/image_backbone.pt
   linear_only: false
   num_queries: 20
   num_blocks: 4
