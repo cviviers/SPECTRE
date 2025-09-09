@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def deactivate_requires_grad(model: nn.Module):
+def deactivate_requires_grad_and_to_eval(model: nn.Module):
     """Deactivates the requires_grad flag for all parameters of a model.
 
     This has the same effect as permanently executing the model within a `torch.no_grad()`
@@ -22,7 +22,7 @@ def deactivate_requires_grad(model: nn.Module):
         param.requires_grad = False
 
 
-def activate_requires_grad(model: nn.Module):
+def activate_requires_grad_and_to_train(model: nn.Module):
     """Activates the requires_grad flag for all parameters of a model.
 
     Use this method to activate gradients for a model (e.g. after deactivating
@@ -34,6 +34,7 @@ def activate_requires_grad(model: nn.Module):
     """
     for param in model.parameters():
         param.requires_grad = True
+    model.train()
 
 
 @torch.no_grad()

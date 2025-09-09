@@ -7,28 +7,28 @@ from timm.layers import PatchDropout, AttentionPoolLatent
 from timm.models.vision_transformer import LayerScale, DropPath, Mlp
 
 from spectre.utils.models import resample_abs_pos_embed, feature_take_indices, global_pool_nlc
-from spectre.models.layers import PatchEmbed, Attention
+from spectre.models.layers import PatchEmbed, Attention, RotaryPositionEmbedding
 
 
 class Block(nn.Module):
     def __init__(
-            self,
-            dim: int,
-            num_heads: int,
-            attn_mode: str = 'mha',
-            q_proj_dim: Optional[int] = None,
-            kv_proj_dim: Optional[int] = None,
-            mlp_ratio: float = 4.,
-            qkv_bias: bool = False,
-            qk_norm: bool = False,
-            proj_bias: bool = True,
-            proj_drop: float = 0.,
-            attn_drop: float = 0.,
-            init_values: Optional[float] = None,
-            drop_path: float = 0.,
-            act_layer: Type[nn.Module] = nn.GELU,
-            norm_layer: Type[nn.Module] = nn.LayerNorm,
-            mlp_layer: Type[nn.Module] = Mlp,
+        self,
+        dim: int,
+        num_heads: int,
+        attn_mode: str = 'mha',
+        q_proj_dim: Optional[int] = None,
+        kv_proj_dim: Optional[int] = None,
+        mlp_ratio: float = 4.,
+        qkv_bias: bool = False,
+        qk_norm: bool = False,
+        proj_bias: bool = True,
+        proj_drop: float = 0.,
+        attn_drop: float = 0.,
+        init_values: Optional[float] = None,
+        drop_path: float = 0.,
+        act_layer: Type[nn.Module] = nn.GELU,
+        norm_layer: Type[nn.Module] = nn.LayerNorm,
+        mlp_layer: Type[nn.Module] = Mlp,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -59,8 +59,12 @@ class Block(nn.Module):
         self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x))))
+    def forward(
+        self, 
+        x: torch.Tensor, 
+        rope = None
+    ) -> torch.Tensor:
+        x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x), rope=rope)))
         x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
         return x
 
@@ -69,44 +73,45 @@ class VisionTransformer(nn.Module):
     """ Vision Transformer with 3D Patch Embedding
     """
     def __init__(
-            self, 
-            img_size: Union[int, Tuple[int, int, int]] = (128, 128, 64),
-            patch_size: Union[int, Tuple[int, int, int]] = (16, 16, 8),
-            in_chans: int = 1,
-            num_classes: int = 1000,
-            global_pool: Literal['', 'avg', 'avgmax', 'max', 'token', 'map'] = 'token',
-            embed_dim: int = 768,
-            depth: int = 12,
-            num_heads: int = 12,
-            attn_mode: str = 'mha',
-            q_proj_dim: Optional[int] = None,
-            kv_proj_dim: Optional[int] = None,
-            mlp_ratio: float = 4.,
-            qkv_bias: bool = True,
-            qk_norm: bool = False,
-            proj_bias: bool = True,
-            init_values: Optional[float] = None,
-            class_token: bool = True,
-            pos_embed: str = 'learn',
-            no_embed_class: bool = False,
-            reg_tokens: int = 0,
-            pre_norm: bool = False,
-            final_norm: bool = True,
-            fc_norm: Optional[bool] = None,
-            dynamic_img_size: bool = False,
-            dynamic_img_pad: bool = False,
-            drop_rate: float = 0.,
-            pos_drop_rate: float = 0.,
-            patch_drop_rate: float = 0.,
-            proj_drop_rate: float = 0.,
-            attn_drop_rate: float = 0.,
-            drop_path_rate: float = 0.,
-            embed_layer: Callable = PatchEmbed,
-            embed_norm_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
-            norm_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
-            act_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
-            block_fn: Type[nn.Module] = Block,
-            mlp_layer: Type[nn.Module] = Mlp,
+        self, 
+        img_size: Union[int, Tuple[int, int, int]] = (128, 128, 64),
+        patch_size: Union[int, Tuple[int, int, int]] = (16, 16, 8),
+        in_chans: int = 1,
+        num_classes: int = 1000,
+        global_pool: Literal['', 'avg', 'avgmax', 'max', 'token', 'map'] = 'token',
+        embed_dim: int = 768,
+        depth: int = 12,
+        num_heads: int = 12,
+        attn_mode: str = 'mha',
+        q_proj_dim: Optional[int] = None,
+        kv_proj_dim: Optional[int] = None,
+        mlp_ratio: float = 4.,
+        qkv_bias: bool = True,
+        qk_norm: bool = False,
+        proj_bias: bool = True,
+        init_values: Optional[float] = None,
+        class_token: bool = True,
+        pos_embed: str = 'learn',
+        no_embed_class: bool = False,
+        rope_kwargs: Optional[dict] = None,
+        reg_tokens: int = 0,
+        pre_norm: bool = False,
+        final_norm: bool = True,
+        fc_norm: Optional[bool] = None,
+        dynamic_img_size: bool = False,
+        dynamic_img_pad: bool = False,
+        drop_rate: float = 0.,
+        pos_drop_rate: float = 0.,
+        patch_drop_rate: float = 0.,
+        proj_drop_rate: float = 0.,
+        attn_drop_rate: float = 0.,
+        drop_path_rate: float = 0.,
+        embed_layer: Callable = PatchEmbed,
+        embed_norm_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
+        norm_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
+        act_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
+        block_fn: Type[nn.Module] = Block,
+        mlp_layer: Type[nn.Module] = Mlp,
     ) -> None:
         """
         Args:
@@ -125,7 +130,9 @@ class VisionTransformer(nn.Module):
             qkv_bias: Enable bias for qkv projections if True.
             init_values: Layer-scale init values (layer-scale enabled if not None).
             class_token: Use class token.
-            no_embed_class: Don't include position embeddings for class (or reg) tokens.
+            pos_embed: Type of position embedding to use (default: 'learn').
+            no_embed_class: Don't include position embeddings for class (or reg) tokens for learnable pos_embed.
+            rope_kwargs: Additional arguments for rotary position embedding.
             reg_tokens: Number of register tokens.
             pre_norm: Enable norm after embeddings, before transformer blocks (standard in CLIP ViT).
             final_norm: Enable norm after transformer blocks, before head (standard in most ViT).
@@ -145,7 +152,10 @@ class VisionTransformer(nn.Module):
         super().__init__()
         assert global_pool in ('', 'avg', 'avgmax', 'max', 'token', 'map')
         assert class_token or global_pool != 'token'
-        assert pos_embed in ('', 'none', 'learn')
+        assert pos_embed in ('', 'none', 'learn', 'rope')
+        assert attn_mode in ('mha', 'mqa', 'mla')
+        rope_kwargs = {} if rope_kwargs is None else dict(rope_kwargs)
+        rope_kwargs.setdefault("dtype", torch.float32)  # robust with mixed-precision
         use_fc_norm = global_pool in ('avg', 'avgmax', 'max') if fc_norm is None else fc_norm
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         embed_norm_layer = embed_norm_layer
@@ -159,10 +169,10 @@ class VisionTransformer(nn.Module):
         self.num_reg_tokens = reg_tokens
         self.has_class_token = class_token
         self.no_embed_class = no_embed_class  # don't embed prefix positions (includes reg)
-        self.dynamic_img_size = dynamic_img_size
+        self.dynamic_img_size = dynamic_img_size or pos_embed == 'rope'
 
         embed_args = {}
-        if dynamic_img_size:
+        if self.dynamic_img_size:
             # flatten deferred until after pos embed
             embed_args.update(dict(strict_img_size=False, output_fmt="NHWDC"))
         if embed_norm_layer is not None:
@@ -182,10 +192,20 @@ class VisionTransformer(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) if class_token else None
         self.reg_token = nn.Parameter(torch.zeros(1, reg_tokens, embed_dim)) if reg_tokens else None
         embed_len = num_patches if no_embed_class else num_patches + self.num_prefix_tokens
-        if not pos_embed or pos_embed == 'none':
-            self.pos_embed = None
-        else:
+        self.pos_embed, self.rope, self.requires_per_sample_rope = None, None, False
+        if pos_embed == 'learn':
             self.pos_embed = nn.Parameter(torch.randn(1, embed_len, embed_dim) * .02)
+        if pos_embed == 'rope':
+            self.rope = RotaryPositionEmbedding(
+                embed_dim=embed_dim,
+                num_heads=num_heads,
+                **rope_kwargs,
+            )
+            self.requires_per_sample_rope = any([
+                self.rope.shift_coords is not None,
+                self.rope.jitter_coords is not None,
+                self.rope.rescale_coords is not None,
+            ])
         self.pos_drop = nn.Dropout(p=pos_drop_rate)
         if patch_drop_rate > 0:
             self.patch_drop = PatchDropout(
@@ -298,22 +318,30 @@ class VisionTransformer(nn.Module):
                     verbose=True,
                 ))
 
-    def _pos_embed(self, x: torch.Tensor) -> torch.Tensor:
-        if self.pos_embed is None:
-            return x.view(x.shape[0], -1, x.shape[-1])
-
-        if self.dynamic_img_size:
-            B, H, W, D, C = x.shape
-            prev_grid_size = self.patch_embed.grid_size
-            pos_embed = resample_abs_pos_embed(
-                self.pos_embed,
-                new_size=(H, W, D),
-                old_size=prev_grid_size,
-                num_prefix_tokens=0 if self.no_embed_class else self.num_prefix_tokens,
-            )
-            x = x.view(B, -1, C)
-        else:
-            pos_embed = self.pos_embed
+    def _pos_embed(self, x: torch.Tensor):
+        if self.pos_embed is None and self.rope is None:
+            return x.view(x.shape[0], -1, x.shape[-1]), None
+        
+        B, H, W, D, C = x.shape
+        x = x.view(B, -1, C)
+        pos_embed, rope = None, None
+        if self.pos_embed is not None:
+            if self.dynamic_img_size:
+                prev_grid_size = self.patch_embed.grid_size
+                pos_embed = resample_abs_pos_embed(
+                    self.pos_embed,
+                    new_size=(H, W, D),
+                    old_size=prev_grid_size,
+                    num_prefix_tokens=0 if self.no_embed_class else self.num_prefix_tokens,
+                )
+            else:
+                pos_embed = self.pos_embed
+        
+        if self.rope is not None:
+            if self.requires_per_sample_rope:
+                rope = [self.rope(H=H, W=W, D=D) for _ in range(B)]
+            else:
+                rope = self.rope(H=H, W=W, D=D)
 
         to_cat = []
         if self.cls_token is not None:
@@ -324,7 +352,8 @@ class VisionTransformer(nn.Module):
         if self.no_embed_class:
             # deit-3, updated JAX (big vision)
             # position embedding does not overlap with class token, add then concat
-            x = x + pos_embed
+            if pos_embed is not None:
+                x = x + pos_embed
             if to_cat:
                 x = torch.cat(to_cat + [x], dim=1)
         else:
@@ -332,9 +361,11 @@ class VisionTransformer(nn.Module):
             # pos_embed has entry for class token, concat then add
             if to_cat:
                 x = torch.cat(to_cat + [x], dim=1)
-            x = x + pos_embed
+            if pos_embed is not None:
+                x = x + pos_embed
 
-        return self.pos_drop(x)
+        return self.pos_drop(x), rope
+        
 
     def forward_intermediates(
             self,
@@ -367,7 +398,7 @@ class VisionTransformer(nn.Module):
         # forward pass
         B, _, height, width, depth = x.shape
         x = self.patch_embed(x)
-        x = self._pos_embed(x)
+        x, rope = self._pos_embed(x)
         x = self.patch_drop(x)
         x = self.norm_pre(x)
 
@@ -376,7 +407,7 @@ class VisionTransformer(nn.Module):
         else:
             blocks = self.blocks[:max_index + 1]
         for i, blk in enumerate(blocks):
-            x = blk(x)
+            x = blk(x, rope=rope)
             if i in take_indices:
                 # normalize intermediates with final norm layer if enabled
                 intermediates.append(self.norm(x) if norm else x)
@@ -449,11 +480,12 @@ class VisionTransformer(nn.Module):
     
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
         x = self.patch_embed(x)
-        x = self._pos_embed(x)
+        x, rope = self._pos_embed(x)
         x = self.patch_drop(x)
         x = self.norm_pre(x)
 
-        x = self.blocks(x)
+        for blk in self.blocks:
+            x = blk(x, rope=rope)
         x = self.norm(x)
         return x
 
@@ -471,9 +503,9 @@ class VisionTransformer(nn.Module):
         x = self.head_drop(x)
         return x if pre_logits else self.head(x)
 
-    def forward(self, x: torch.Tensor, pre_logits: bool = False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.forward_features(x)
-        x = self.forward_head(x, pre_logits=pre_logits)
+        x = self.forward_head(x)
         return x
     
     @classmethod
@@ -503,7 +535,7 @@ def vit_tiny_patch16_128(
         patch_size=(16, 16, 8),
         embed_dim=192,
         depth=12,
-        num_heads=3,
+        num_heads=2,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
@@ -525,7 +557,7 @@ def vit_small_patch16_128(
         patch_size=(16, 16, 8),
         embed_dim=384,
         depth=12,
-        num_heads=6,
+        num_heads=4,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
@@ -547,7 +579,7 @@ def vit_base_patch16_128(
         patch_size=(16, 16, 8),
         embed_dim=768,
         depth=12,
-        num_heads=12,
+        num_heads=8,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
@@ -569,7 +601,7 @@ def vit_base_patch32_128(
         patch_size=(32, 32, 16),
         embed_dim=768,
         depth=12,
-        num_heads=12,
+        num_heads=8,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
@@ -589,9 +621,9 @@ def vit_large_patch16_128(
     kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(16, 16, 8),
-        embed_dim=1024,
+        embed_dim=1080,
         depth=24,
-        num_heads=16,
+        num_heads=12,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
@@ -611,9 +643,9 @@ def vit_large_patch32_128(
     kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(32, 32, 16),
-        embed_dim=1024,
+        embed_dim=1080,
         depth=24,
-        num_heads=16,
+        num_heads=12,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,

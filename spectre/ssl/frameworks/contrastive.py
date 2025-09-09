@@ -13,7 +13,7 @@ import torch.nn as nn
 from spectre.models import VisionTransformer
 from spectre.ssl.models import MaskedVisionTransformer
 from spectre.ssl.heads import DINOProjectionHead
-from spectre.utils.models import deactivate_requires_grad
+from spectre.utils import deactivate_requires_grad_and_to_eval
 
 
 class DINO(nn.Module):
@@ -24,41 +24,54 @@ class DINO(nn.Module):
         hidden_dim: int = 2048,
         bottleneck_dim: int = 256,
         output_dim: int = 65536,
+        freeze_last_layer: int = 1,
     ):
         super().__init__()
 
-        self.student_backbone = backbone
-        self.student_head = DINOProjectionHead(
-            input_dim, hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=1,
+        self.backbone_student = backbone
+        self.head_student = DINOProjectionHead(
+            input_dim, hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=freeze_last_layer,
         )
 
-        self.teacher_backbone = deepcopy(backbone)
-        self.teacher_head = DINOProjectionHead(
+        self.backbone_teacher = deepcopy(backbone)
+        self.head_teacher = DINOProjectionHead(
             input_dim, hidden_dim, bottleneck_dim, output_dim,
         )
-        deactivate_requires_grad(self.teacher_backbone)
-        deactivate_requires_grad(self.teacher_head)
+        deactivate_requires_grad_and_to_eval(self.backbone_teacher)
+        deactivate_requires_grad_and_to_eval(self.head_teacher)
     
-    def forward(
+    def forward_student(
         self, 
         global_crops: torch.Tensor, 
         local_crops: torch.Tensor
     ) -> torch.Tensor:
-        cls_tokens_global = self.student_backbone(global_crops).flatten(start_dim=1)
-        cls_tokens_local = self.student_backbone(local_crops).flatten(start_dim=1)
+        cls_tokens_global = self.backbone_student(global_crops).flatten(start_dim=1)
+        cls_tokens_local = self.backbone_student(local_crops).flatten(start_dim=1)
 
-        cls_tokens_global_after_head = self.student_head(cls_tokens_global)
-        cls_tokens_local_after_head = self.student_head(cls_tokens_local)
-        
+        cls_tokens_global_after_head = self.head_student(cls_tokens_global)
+        cls_tokens_local_after_head = self.head_student(cls_tokens_local)
+
         return cls_tokens_global_after_head, cls_tokens_local_after_head
     
+    @torch.no_grad()
     def forward_teacher(
         self, 
         global_crops: torch.Tensor
     ) -> torch.Tensor:
-        cls_tokens = self.teacher_backbone(global_crops).flatten(start_dim=1)
-        cls_tokens_after_head = self.teacher_head(cls_tokens)
+        cls_tokens = self.backbone_teacher(global_crops).flatten(start_dim=1)
+        cls_tokens_after_head = self.head_teacher(cls_tokens)
         return cls_tokens_after_head
+    
+    def forward(
+        self, 
+        global_crops: torch.Tensor, 
+        local_crops: torch.Tensor,
+    ):
+        student_global_cls_out, student_local_cls_out = self.forward_student(
+            global_crops, local_crops)
+        teacher_global_cls_out = self.forward_teacher(global_crops)
+        return teacher_global_cls_out, student_global_cls_out, student_local_cls_out
+
 
 
 class DINOv2(nn.Module):
@@ -87,10 +100,10 @@ class DINOv2(nn.Module):
         self.teacher_head_ibot = DINOProjectionHead(
             input_dim, hidden_dim, bottleneck_dim, output_dim,
         )
-        deactivate_requires_grad(self.teacher_backbone)
-        deactivate_requires_grad(self.teacher_head_dino)
-        deactivate_requires_grad(self.teacher_head_ibot)
-    
+        deactivate_requires_grad_and_to_eval(self.teacher_backbone)
+        deactivate_requires_grad_and_to_eval(self.teacher_head_dino)
+        deactivate_requires_grad_and_to_eval(self.teacher_head_ibot)
+
     def forward(
         self, 
         global_crops: torch.Tensor, 
