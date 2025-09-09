@@ -1,13 +1,15 @@
+import math
 from functools import partial
-from typing import Union, Callable, Literal, Optional, Type, Set
+from typing import Union, Callable, Literal, Optional, Type, Set, Tuple
 
 import torch
 import torch.nn as nn
 from timm.models.vision_transformer import Mlp
 from timm.layers import PatchDropout, AttentionPoolLatent
 
-from spectre.utils.models import  global_pool_nlc
+from spectre.utils import  global_pool_nlc, to_3tuple, resample_abs_pos_embed
 from spectre.models.vision_transformer import Block
+from spectre.models.layers import RotaryPositionEmbedding
 
 
 class FeatureVisionTransformer(nn.Module):
@@ -15,7 +17,7 @@ class FeatureVisionTransformer(nn.Module):
     """
     def __init__(
             self, 
-            num_patches: int = 36,
+            grid_size: Optional[Union[int, Tuple[int, int, int]]] = None,
             patch_dim: int = 768,
             num_classes: int = 1000,
             global_pool: Literal['', 'avg', 'avgmax', 'max', 'token', 'map'] = 'token',
@@ -33,10 +35,12 @@ class FeatureVisionTransformer(nn.Module):
             class_token: bool = True,
             pos_embed: str = 'learn',
             no_embed_class: bool = False,
+            rope_kwargs: Optional[dict] = None,
             reg_tokens: int = 0,
             pre_norm: bool = False,
             final_norm: bool = True,
             fc_norm: Optional[bool] = None,
+            dynamic_grid_size: bool = False,
             drop_rate: float = 0.,
             pos_drop_rate: float = 0.,
             patch_drop_rate: float = 0.,
@@ -82,12 +86,16 @@ class FeatureVisionTransformer(nn.Module):
         super().__init__()
         assert global_pool in ('', 'avg', 'avgmax', 'max', 'token', 'map')
         assert class_token or global_pool != 'token'
-        assert pos_embed in ('', 'none', 'learn')
+        assert pos_embed in ('', 'none', 'learn', 'rope')
+        assert attn_mode in ('mha', 'mqa', 'mla')
+        assert grid_size is not None or pos_embed in ('', 'none', 'rope')
+        rope_kwargs = {} if rope_kwargs is None else dict(rope_kwargs)
+        rope_kwargs.setdefault("dtype", torch.float32)  # robust with mixed-precision
         use_fc_norm = global_pool in ('avg', 'avgmax', 'max') if fc_norm is None else fc_norm
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         act_layer = act_layer or nn.GELU
 
-        self.num_patches = num_patches
+        self.grid_size = None if grid_size is None else to_3tuple(grid_size)
         self.num_classes = num_classes
         self.global_pool = global_pool
         self.num_features = self.head_hidden_size = self.embed_dim = embed_dim  # for consistency with other models
@@ -96,16 +104,23 @@ class FeatureVisionTransformer(nn.Module):
         self.num_reg_tokens = reg_tokens
         self.has_class_token = class_token
         self.no_embed_class = no_embed_class  # don't embed prefix positions (includes reg)
+        self.dynamic_grid_size = dynamic_grid_size or pos_embed == 'rope'
 
+        self.num_patches = None if grid_size is None else int(math.prod(grid_size))
         self.patch_proj = nn.Linear(patch_dim, embed_dim, proj_bias)
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) if class_token else None
         self.reg_token = nn.Parameter(torch.zeros(1, reg_tokens, embed_dim)) if reg_tokens else None
-        embed_len = num_patches if no_embed_class else num_patches + self.num_prefix_tokens
-        if not pos_embed or pos_embed == 'none':
-            self.pos_embed = None
-        else:
+        self.pos_embed, self.rope, self.requires_per_sample_rope = None, None, False
+        if pos_embed == 'learn':
+            embed_len = self.num_patches if no_embed_class else self.num_patches + self.num_prefix_tokens
             self.pos_embed = nn.Parameter(torch.randn(1, embed_len, embed_dim) * .02)
+        if pos_embed == 'rope':
+            self.rope = RotaryPositionEmbedding(
+                embed_dim=embed_dim,
+                num_heads=num_heads,
+                **rope_kwargs,
+            )
         self.pos_drop = nn.Dropout(p=pos_drop_rate)
         if patch_drop_rate > 0:
             self.patch_drop = PatchDropout(
@@ -193,9 +208,36 @@ class FeatureVisionTransformer(nn.Module):
             self.global_pool = global_pool
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-    def _pos_embed(self, x: torch.Tensor) -> torch.Tensor:
-        if self.pos_embed is None:
+    def _pos_embed(
+        self, 
+        x: torch.Tensor,
+        grid_size: Optional[Union[int, Tuple[int, int, int]]] = None,
+    ):
+        if self.pos_embed is None and self.rope is None:
             return x.view(x.shape[0], -1, x.shape[-1])
+        
+        assert grid_size is not None or not self.dynamic_grid_size
+        pos_embed, rope = None, None
+        if self.pos_embed is not None:
+            if self.dynamic_grid_size:
+                H, W, D = to_3tuple(grid_size)
+                prev_grid_size = self.grid_size
+                pos_embed = resample_abs_pos_embed(
+                    self.pos_embed, 
+                    new_size=(H, W, D),
+                    old_size=prev_grid_size,
+                    num_prefix_tokens=0 if self.no_embed_class else self.num_prefix_tokens,
+                )
+            else:
+                pos_embed = self.pos_embed
+
+        if self.rope is not None:
+            B = x.shape[0]            
+            H, W, D = to_3tuple(grid_size)
+            if self.requires_per_sample_rope:
+                rope = [self.rope(H=H, W=W, D=D) for _ in range(B)]
+            else:
+                rope = self.rope(H=H, W=W, D=D)
 
         to_cat = []
         if self.cls_token is not None:
@@ -203,10 +245,13 @@ class FeatureVisionTransformer(nn.Module):
         if self.reg_token is not None:
             to_cat.append(self.reg_token.expand(x.shape[0], -1, -1))
 
+        if pos_embed is None and to_cat:
+            # only prefix tokens, no position embedding
+            x = torch.cat(to_cat + [x], dim=1)
         if self.no_embed_class:
             # deit-3, updated JAX (big vision)
             # position embedding does not overlap with class token, add then concat
-            x = x + self.pos_embed
+            x = x + pos_embed
             if to_cat:
                 x = torch.cat(to_cat + [x], dim=1)
         else:
@@ -214,17 +259,25 @@ class FeatureVisionTransformer(nn.Module):
             # pos_embed has entry for class token, concat then add
             if to_cat:
                 x = torch.cat(to_cat + [x], dim=1)
-            x = x + self.pos_embed
+            x = x + pos_embed
 
-        return self.pos_drop(x)
-    
-    def forward_features(self, x: torch.Tensor) -> torch.Tensor:
+        return self.pos_drop(x), rope
+
+
+    def forward_features(
+        self, 
+        x: torch.Tensor, 
+        grid_size: Optional[Union[int, Tuple[int, int, int]]] = None,
+    ) -> torch.Tensor:
+        assert x.ndim == 3, f"Expected input with 3 dimensions (B, N, C), got {x.ndim}."
+
         x = self.patch_proj(x)
-        x = self._pos_embed(x)
+        x, rope = self._pos_embed(x, grid_size)
         x = self.patch_drop(x)
         x = self.norm_pre(x)
 
-        x = self.blocks(x)
+        for blk in self.blocks:
+            x = blk(x, rope=rope)
         x = self.norm(x)
         return x
 
@@ -242,8 +295,12 @@ class FeatureVisionTransformer(nn.Module):
         x = self.head_drop(x)
         return x if pre_logits else self.head(x)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.forward_features(x)
+    def forward(
+        self, 
+        x: torch.Tensor, 
+        grid_size: Optional[Union[int, Tuple[int, int, int]]] = None,
+    ) -> torch.Tensor:
+        x = self.forward_features(x, grid_size)
         x = self.forward_head(x)
         return x
     

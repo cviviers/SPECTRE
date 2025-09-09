@@ -23,8 +23,8 @@ def extended_collate_dino(samples_list: List) -> dict:
     collated_data = list_data_collate(samples_list)
 
     # Extract crops
-    global_views = torch.cat(collated_data["global_views"], dim=0)
-    local_views = torch.cat(collated_data["local_views"], dim=0)
+    global_views = torch.cat(collated_data["image_global_views"], dim=0)
+    local_views = torch.cat(collated_data["image_local_views"], dim=0)
 
     return {
         "global_views": global_views,
@@ -38,6 +38,7 @@ def extended_collate_siglip(
     tokenizer_padding: bool = True,
     tokenizer_truncation: bool = True,
     tokenizer_max_length: int = 1024,
+    return_filenames: bool = False
 ) -> dict:
     """
     Applies SigLIP collate and then extends it with tokenization logic.
@@ -49,22 +50,15 @@ def extended_collate_siglip(
     Returns:
         A dictionary with collated images and tokenized text.
     """
-    try:
-        collated_data = list_data_collate(samples_list)
-    except KeyError as e:
-        elem = samples_list[0]
-        data = [i for k in samples_list for i in k] if isinstance(elem, list) else samples_list
-        keys = [d.keys() for d in data if isinstance(d, dict)]
-        for k in keys:
-            print(f"Keys in sample: {k}")
-        raise e
+    collated_data = list_data_collate(samples_list)
 
-    if "image" in collated_data.keys():
-        if (
-            hasattr(samples_list[0]["image"].data, "meta") 
-            and "filename_or_obj" in samples_list[0]["image"].data.meta
-        ):
-            collated_data["filename"] = [s["image"].data.meta["filename_or_obj"] for s in samples_list]
+    if return_filenames:
+        if "image" in collated_data.keys():
+            if (
+                hasattr(samples_list[0]["image"].data, "meta") 
+                and "filename_or_obj" in samples_list[0]["image"].data.meta
+            ):
+                collated_data["filename"] = [s["image"].data.meta["filename_or_obj"] for s in samples_list]
 
     if tokenizer is not None and "report" in collated_data.keys():
         tokenizer_output = tokenizer.batch_encode_plus(

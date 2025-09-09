@@ -13,7 +13,7 @@ train:
   data_dir: /data/
   data_fraction: 1.0
   output_dir: .
-  saveckp_freq: 20
+  saveckp_freq: 5
   resume_ckp: true
   seed: 0
   num_workers: 10
@@ -45,19 +45,20 @@ model:
   pretrained_weights: null
   hidden_dim: 2048
   bottleneck_dim: 256
-  output_dim: 65536
-  momentum_teacher: 0.992
+  output_dim: 65536  # originally 65536, reduced for low-data regime
+  momentum_teacher: 0.992  # originally 0.992, increased for low-data regime
   momentum_teacher_end: 1.0
   warmup_teacher_temp: 0.04
   teacher_temp: 0.07
   warmup_teacher_temp_epochs: 30
   student_temp: 0.1
   center_momentum: 0.9
-  mask_ratio_min: 0.1
-  mask_ratio_max: 0.5
+  mask_ratio_min: 0.2  # originally 0.1, increased for 3D (more neighbors)
+  mask_ratio_max: 0.7  # originally 0.5, increased for 3D (more neighbors)
   mask_probability: 0.5
-  ibot_seperate_head: false
-  student_drop_path_rate: 0.1
+  ibot_seperate_head: true
+  freeze_last_layer: 1  # originally 1, increased for low-data regime
+  student_drop_path_rate: 0.3  # originally 0.3, decreased for low-data regime
   num_local_views: 8
   dino_loss_weight: 1.0
   koleo_loss_weight: 0.1

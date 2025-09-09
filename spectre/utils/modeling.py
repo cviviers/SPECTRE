@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from enum import Enum
 from typing import List, Tuple, Optional, Union
@@ -7,10 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from spectre.models import VisionTransformer
 
-
-def deactivate_requires_grad(model: nn.Module):
+def deactivate_requires_grad_and_to_eval(model: nn.Module):
     """Deactivates the requires_grad flag for all parameters of a model.
 
     This has the same effect as permanently executing the model within a `torch.no_grad()`
@@ -23,9 +23,10 @@ def deactivate_requires_grad(model: nn.Module):
     """
     for param in model.parameters():
         param.requires_grad = False
+    model.eval()
 
 
-def activate_requires_grad(model: nn.Module):
+def activate_requires_grad_and_to_train(model: nn.Module):
     """Activates the requires_grad flag for all parameters of a model.
 
     Use this method to activate gradients for a model (e.g. after deactivating
@@ -37,6 +38,7 @@ def activate_requires_grad(model: nn.Module):
     """
     for param in model.parameters():
         param.requires_grad = True
+    model.train()
 
 
 @torch.no_grad()
@@ -60,15 +62,15 @@ def update_momentum(model: nn.Module, model_ema: nn.Module, m: float):
 
 
 def update_drop_path_rate(
-    model: VisionTransformer,
+    model: "VisionTransformer",
     drop_path_rate: float,
     mode: str = "linear",
 ) -> None:
-    """Updates the drop path rate in a TIMM VisionTransformer model.
+    """Updates the drop path rate in a VisionTransformer model.
 
     Args:
         model:
-            TIMM VisionTransformer model.
+            VisionTransformer model.
         drop_path_rate:
             Maximum drop path rate.
         mode:
@@ -477,6 +479,34 @@ def global_pool_nlc(
             assert not pool_type, f'Unknown pool type {pool_type}'
 
     return x
+
+
+def cat_keep_shapes(
+    x_list: List[torch.Tensor]
+) -> Tuple[torch.Tensor, List[Tuple[int, ...]], List[int]]:
+    if not x_list:
+        return torch.empty(0), [], []
+
+    shapes = [x.shape for x in x_list]
+    num_tokens = [x.select(dim=-1, index=0).numel() for x in x_list]
+    x_cat = torch.cat([x.flatten(0, -2) for x in x_list], dim=0)
+
+    return x_cat, shapes, num_tokens
+
+
+def uncat_with_shapes(
+    x_cat: torch.Tensor,
+    shapes: List[Tuple[int, ...]],
+    num_tokens: List[int]
+) -> List[torch.Tensor]:
+    if not shapes:
+        return []
+
+    x_splitted = torch.split_with_sizes(x_cat, num_tokens, dim=0)
+    shapes_adjusted = [shape[:-1] + torch.Size([x_cat.shape[-1]]) for shape in shapes]
+    outputs_reshape = [x.reshape(shape) for x, shape in zip(x_splitted, shapes_adjusted)]
+
+    return outputs_reshape
 
 
 def last_token_pool(

@@ -236,7 +236,7 @@ class CosineWarmupScheduler(torch.optim.lr_scheduler.LambdaLR):
         )
 
 
-def compute_backbone_lr_multipliers(model, llrd_factor):
+def compute_backbone_lr_multipliers(model, llrd_factor, prefix=("backbone.", )):
     """
     Compute LR multipliers for backbone params using Layer-wise LR Decay (LLRD).
 
@@ -247,19 +247,24 @@ def compute_backbone_lr_multipliers(model, llrd_factor):
     Returns:
         dict mapping parameter tensors -> multiplier
     """
-    backbone_params = [(n, p) for n, p in model.named_parameters() if "backbone." in n]
-    other_params = [(n, p) for n, p in model.named_parameters() if "backbone." not in n]
+    lrrd_params = [(n, p) for n, p in model.named_parameters() if any(pfx in n for pfx in prefix)]
+    other_params = [(n, p) for n, p in model.named_parameters() if not any(pfx in n for pfx in prefix)]
 
     # Walk from last backbone param to first, applying decay on new blocks
     multiplier = 1.0
     last_block_idx = None
     param_to_mult = {}
 
-    for n, _ in reversed(backbone_params):
+    for n, p in reversed(lrrd_params):
         block_idx = None
-        if "backbone.blocks." in n:
+        if any(f"{pfx}blocks." in n for pfx in prefix):
             try:
-                block_idx = int(n.split("backbone.blocks.")[1].split(".")[0])
+                # get the block index from the param name
+                block_idx = None
+                for pfx in prefix:
+                    if f"{pfx}blocks." in n:
+                        block_idx = int(n.split(f"{pfx}blocks.")[1].split(".")[0])
+                        break
             except ValueError:
                 pass
 
@@ -271,10 +276,12 @@ def compute_backbone_lr_multipliers(model, llrd_factor):
                 last_block_idx = block_idx
 
         # Assign multiplier to this param
-        param_to_mult[n] = multiplier
+        if p.requires_grad:
+            param_to_mult[n] = multiplier
 
     # Non-backbone params → multiplier 1.0
-    for n, _ in other_params:
-        param_to_mult[n] = 1.0
+    for n, p in other_params:
+        if p.requires_grad:
+            param_to_mult[n] = 1.0
 
     return param_to_mult

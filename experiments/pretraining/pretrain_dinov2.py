@@ -1,10 +1,9 @@
 import os
-import random
 import argparse
 from itertools import chain
 
-import numpy as np
 import torch
+import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
 
@@ -24,6 +23,7 @@ from spectre.utils import (
     cosine_schedule,
     cosine_warmup_schedule,
     linear_warmup_schedule,
+    get_param_groups_with_decay,
 )
 
 
@@ -73,7 +73,11 @@ def main(cfg, accelerator: Accelerator):
         backbone = getattr(models, cfg.model.architecture)(
             pretrained_weights=cfg.model.pretrained_weights,
             num_classes=0,
-            dynamic_img_size=True,
+            pos_embed="rope",
+            rope_kwargs={
+                "base": 1000.0,  # works for most 3D models
+                "rescale_coords": 2.0,  # s in [0.5, 2.0]
+            }
         )
         embed_dim = backbone.embed_dim
     else:
@@ -89,7 +93,7 @@ def main(cfg, accelerator: Accelerator):
         cache_dir=cfg.train.cache_dir,
         use_gds=cfg.train.use_gds,
         transform=DINOTransform(
-            num_local_views=cfg.train.num_local_views,
+            num_local_views=cfg.model.num_local_views,
             dtype="float16" if cfg.train.load_fp16 else "float32",
             use_gds=cfg.train.use_gds,
         ),
@@ -113,6 +117,7 @@ def main(cfg, accelerator: Accelerator):
         output_dim=cfg.model.output_dim,
         ibot_seperate_head=cfg.model.ibot_seperate_head,
         student_drop_path_rate=cfg.model.student_drop_path_rate,
+        freeze_last_layer=cfg.model.freeze_last_layer,
     )
 
     # Initialize criterion
@@ -133,13 +138,20 @@ def main(cfg, accelerator: Accelerator):
     criterion_koleo = KoLeoLoss()
 
     # Initialize optimizer
+    param_groups = get_param_groups_with_decay(
+        model,
+        llrd_factor=cfg.optim.llrd_factor,
+        patch_embed_lr_mult=cfg.optim.patch_embed_lr_mult,
+        projection_head_wd_mult=cfg.optim.projection_head_wd_mult,
+    )
     optimizer = AdamW(
-        model.parameters(),
+        param_groups,
         lr=cfg.optim.lr,
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
 
     # Prepare model, data, and optimizer for training
+    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model, data_loader, criterion_dino, criterion_ibot, criterion_koleo, \
         optimizer = accelerator.prepare(
             model, data_loader, criterion_dino,
@@ -166,14 +178,18 @@ def main(cfg, accelerator: Accelerator):
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(data_loader)
     warmup_num_steps = cfg.optim.warmup_epochs * len(data_loader)
-    warmup_teacher_temp_num_steps = cfg.optim.warmup_teacher_temp_epochs * len(data_loader)
+    warmup_teacher_temp_num_steps = cfg.model.warmup_teacher_temp_epochs * len(data_loader)
 
     # Start training
     global_step: int = start_epoch * len(data_loader)
     for epoch in range(start_epoch, cfg.optim.epochs):
-        model.train()
-        for batch in data_loader:
 
+        # Set epoch for shuffling
+        if hasattr(data_loader, "set_epoch"):
+            data_loader.set_epoch(epoch)  # accelerate will call sampler internally
+           
+        for batch in data_loader:
+        
             with accelerator.accumulate(model):
 
                 # Update learning rate
@@ -195,10 +211,10 @@ def main(cfg, accelerator: Accelerator):
                     cfg.model.momentum_teacher,
                     cfg.model.momentum_teacher_end,
                 )
-                update_momentum(unwrapped_model.student_backbone.vit, unwrapped_model.teacher_backbone.vit, momentum)
-                update_momentum(unwrapped_model.student_head_dino, unwrapped_model.teacher_head_dino, momentum)
+                update_momentum(unwrapped_model.backbone_student.vit, unwrapped_model.backbone_teacher.vit, momentum)
+                update_momentum(unwrapped_model.head_student_dino, unwrapped_model.head_teacher_dino, momentum)
                 if cfg.model.ibot_seperate_head:
-                    update_momentum(unwrapped_model.student_head_ibot, unwrapped_model.teacher_head_ibot, momentum)
+                    update_momentum(unwrapped_model.head_student_ibot, unwrapped_model.head_teacher_ibot, momentum)
 
                 # Update weight decay
                 weight_decay = cosine_schedule(
@@ -214,15 +230,21 @@ def main(cfg, accelerator: Accelerator):
 
                 # Masking
                 B = global_views.shape[0]
-                sequence_length = unwrapped_model.teacher_backbone.vit.patch_embed.sequence_length
-                num_prefix_tokens = unwrapped_model.teacher_backbone.num_prefix_tokens
+                sequence_length = unwrapped_model.backbone_teacher.sequence_length
+                num_prefix_tokens = unwrapped_model.backbone_teacher.vit.num_prefix_tokens
                 mask = global_views.new_zeros((B, sequence_length), dtype=torch.bool)
 
                 # Mask patches except for the cls token
-                H, W, D = unwrapped_model.teacher_backbone.vit.patch_embed.grid_size
+                H, W, D = unwrapped_model.backbone_teacher.vit.patch_embed.grid_size
                 assert H * W * D == sequence_length - num_prefix_tokens, \
                     "Grid size does not match sequence length."
-                block_mask = random_block_mask(size=(B, H, W, D), device=mask.device, seed=cfg.train.seed)
+                block_mask = random_block_mask(
+                    size=(B, H, W, D),
+                    batch_mask_ratio=cfg.model.mask_probability,
+                    min_image_mask_ratio=cfg.model.mask_ratio_min,
+                    max_image_mask_ratio=cfg.model.mask_ratio_max,
+                    device=mask.device,
+                )
                 mask[:, num_prefix_tokens:] = block_mask.flatten(start_dim=1)
 
                 # Forward pass
@@ -256,7 +278,8 @@ def main(cfg, accelerator: Accelerator):
                     teacher_temp=teacher_temp,
                 )
                 koleo_loss = sum(
-                    criterion_koleo(p) for p in student_cls_out[:2].chunk(2, dim=0)
+                    criterion_koleo(p) for p in \
+                        student_cls_out.chunk(2 + cfg.model.num_local_views, dim=0)[2:]
                 )
 
                 loss = cfg.model.dino_loss_weight * dino_loss + \
@@ -267,19 +290,35 @@ def main(cfg, accelerator: Accelerator):
                 accelerator.backward(loss)
 
                 # Update model
+                student_heads = [unwrapped_model.head_student_dino]
+                if cfg.model.ibot_seperate_head:
+                    student_heads.append(unwrapped_model.head_student_ibot)
+
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(
                         chain(
-                            unwrapped_model.student_backbone.parameters(), 
-                            unwrapped_model.student_head_dino.parameters(),
-                            unwrapped_model.student_head_ibot.parameters(),
+                            unwrapped_model.backbone_student.parameters(),
+                            *[c.parameters() for c in student_heads]
                         ),
                         cfg.optim.clip_grad_norm
                     )
 
-                unwrapped_model.student_head_dino.cancel_last_layer_gradients(epoch)
-                unwrapped_model.student_head_ibot.cancel_last_layer_gradients(epoch)
+                for head in student_heads:
+                    head.cancel_last_layer_gradients(epoch)
+
                 optimizer.step()
+
+                # Compute student entropy
+                probs = nn.functional.softmax(student_masked_out, dim=-1)
+                entropy = - (probs * torch.log(probs + 1e-12)).sum(dim=-1).mean().item()
+                top1 = (probs.argmax(dim=-1) == teacher_masked_out.argmax(dim=-1)).float().mean().item()
+
+                # compute cosine similarity between student and teacher cls tokens
+                cos_sim = nn.functional.cosine_similarity(
+                    student_cls_out[:teacher_cls_out.size(0)].detach(), 
+                    teacher_cls_out.detach(), 
+                    dim=-1
+                ).mean().item()
 
                 # Log loss, lr, and weight decay
                 if global_step % cfg.train.log_freq == 0:
@@ -301,6 +340,11 @@ def main(cfg, accelerator: Accelerator):
                             "lr": lr,
                             "weight_decay": weight_decay,
                             "momentum": momentum,
+                            "student_mean": student_cls_out.detach().mean().item(),
+                            "student_std": student_cls_out.detach().std(),
+                            "entropy": entropy,
+                            "top1": top1,
+                            "cosine_similarity": cos_sim,
                         },
                         step=global_step,
                     )
@@ -312,32 +356,25 @@ def main(cfg, accelerator: Accelerator):
                 global_step += 1
 
         # Save checkpoint
-        if accelerator.is_main_process:
+        save_state(
+            os.path.join(cfg.train.output_dir, "checkpoint.pt"),
+            epoch=epoch + 1,
+            model=unwrapped_model,
+            optimizer=optimizer,
+            criterion_dino=criterion_dino,
+            criterion_koleo=criterion_koleo,
+            criterion_ibot=criterion_ibot,
+        )
+        if (epoch + 1) % cfg.train.saveckp_freq == 0:
             save_state(
-                os.path.join(cfg.train.output_dir, "checkpoint.pt"),
+                os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
                 epoch=epoch + 1,
                 model=unwrapped_model,
                 optimizer=optimizer,
                 criterion_dino=criterion_dino,
                 criterion_koleo=criterion_koleo,
                 criterion_ibot=criterion_ibot,
-                torch_random_state=torch.random.get_rng_state(),
-                numpy_random_state=tuple(np.random.get_state()),
-                random_random_state=random.getstate(),
             )
-            if (epoch + 1) % cfg.train.saveckp_freq == 0:
-                save_state(
-                    os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
-                    epoch=epoch + 1,
-                    model=unwrapped_model,
-                    optimizer=optimizer,
-                    criterion_dino=criterion_dino,
-                    criterion_koleo=criterion_koleo,
-                    criterion_ibot=criterion_ibot,
-                    torch_random_state=torch.random.get_rng_state(),
-                    numpy_random_state=tuple(np.random.get_state()),
-                    random_random_state=random.getstate(),
-                )
         accelerator.wait_for_everyone()
     
     # Make sure the trackers are finished before exiting

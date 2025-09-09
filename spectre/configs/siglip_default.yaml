@@ -8,7 +8,7 @@ train:
   data_dir: /data/
   data_fraction: 1.0
   output_dir: .
-  saveckp_freq: 20
+  saveckp_freq: 5
   resume_ckp: true
   seed: 0
   num_workers: 10

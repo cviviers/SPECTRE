@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 from spectre.ssl.losses._center import center_momentum, CENTER_MODE_TO_FUNCTION
 
 
@@ -120,6 +119,7 @@ class DINOLoss(nn.Module):
                 teacher_temperature = torch.tensor(self.teacher_temp)
         else:
             teacher_temperature = torch.tensor(self.teacher_temp)
+        teacher_temperature = teacher_temperature.to(teacher_out[0].device)
 
         # Calculate cross-entropy loss.
         teacher_out_stacked = torch.stack(teacher_out)

@@ -14,6 +14,7 @@ from monai.transforms import (
     Orientationd,
     Spacingd,
     ResizeWithPadOrCropd,
+    GridPatchd,
 )
 from transformers import (
     Qwen2TokenizerFast, 
@@ -25,7 +26,7 @@ import spectre.models as models
 from spectre.data import CTRateDataset
 from spectre.ssl.heads import SigLIPProjectionHead
 from spectre.utils import extended_collate_siglip, add_lora_adapters, last_token_pool
-from spectre.transforms import SWSpatialCropSamplesd, GenerateReportTransform
+from spectre.transforms import RandomReportTransformd
 
 
 def get_args_parser():
@@ -134,28 +135,29 @@ def main(args):
 
     # Define transformations for the dataset
     transform = Compose([
-        LoadImaged(keys=["image"]),
-        EnsureChannelFirstd(keys=["image"], channel_dim="no_channel"),
+        LoadImaged(keys=("image",)),
+        EnsureChannelFirstd(keys=("image",), channel_dim="no_channel"),
         ScaleIntensityRanged(
-            keys=["image"], 
+            keys=("image",), 
             a_min=-1000, 
             a_max=1000, 
             b_min=0.0, 
             b_max=1.0, 
             clip=True
         ),
-        Orientationd(keys=["image"], axcodes="RAS"),
-        Spacingd(keys=["image"], pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
-        ResizeWithPadOrCropd(keys=["image"], spatial_size=(384, 384, 256)),
-        SWSpatialCropSamplesd(
-            keys=["image"],
+        Orientationd(keys=("image",), axcodes="RAS"),
+        Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
+        ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, 256)),
+        GridPatchd(
+            keys=("image",),
             patch_size=(128, 128, 64),
             overlap=0.0,
         ),
-        GenerateReportTransform(
+        RandomReportTransformd(
             keys=("findings", "impressions"),
-            likelihood_original=1.0,
-            drop_chance=0.0,
+            keep_original_prob=1.0,
+            drop_prob=0.0,
+            allow_missing_keys=False
         )
     ])
 
@@ -165,6 +167,7 @@ def main(args):
         include_reports=do_text_backbone,
         transform=transform,
         subset="valid",
+        fraction=1.0,  # Use full validation set
     )
     dataloader = DataLoader(
         dataset, 
@@ -176,6 +179,7 @@ def main(args):
                 args.text_tokenizer,
             ) if do_text_backbone else None,
             tokenizer_max_length=4096,
+            return_filenames=True,
         ),
     )
 
@@ -189,7 +193,10 @@ def main(args):
                 pretrained_weights=args.image_backbone_weights,
                 num_classes=0,
                 global_pool='',  # Return all tokens
-            )
+                pos_embed="rope",
+                rope_kwargs={
+                    "base": 1000.0,  # works for most 3D models
+            })
             image_backbone_embed_dim = image_backbone.embed_dim
         else:
             raise NotImplementedError(f"Model {args.architecture} not implemented.")
@@ -198,14 +205,16 @@ def main(args):
         # Load the image feature combiner if specified
         if do_image_feature_comb:
             image_feature_comb = models.FeatureVisionTransformer(
-                num_patches=36,
                 patch_dim=image_backbone_embed_dim * 2,   # cls token + avg pooling (C. Jose et al. 2024)
                 num_classes=0,
                 global_pool='',
                 embed_dim=args.feature_comb_embed_dim,
                 depth=args.feature_comb_num_layers,
                 num_heads=args.feature_comb_num_heads,
-            )
+                pos_embed="rope",
+                rope_kwargs={
+                    "base": 1000.0,
+                })
 
             image_feature_comb.load_state_dict(
                 torch.load(
@@ -337,7 +346,7 @@ def main(args):
                         image_embeddings[:, :, 0, :],  # class token
                         image_embeddings[:, :, 1:, :].mean(dim=2)  # mean of patch tokens
                     ], dim=2)  # (batch, crops, embed_dim)
-                    image_embeddings = image_feature_comb(image_embeddings)
+                    image_embeddings = image_feature_comb(image_embeddings, grid_size=(3, 3, 4))
                     save_embeddings(
                         image_embeddings[:, 0, :], 
                         [p / "image_feature_comb_cls.npy" for p in save_paths]

@@ -26,7 +26,7 @@ def _random_block_mask(
     if max_num_masks_per_block is None:
         max_num_masks_per_block = max(1, num_masks)
 
-    mask = torch.zeros((D, H, W), dtype=torch.bool, device=device)
+    mask = torch.zeros((H, W, D), dtype=torch.bool, device=device)
     masked_count = 0
     global_attempts = 0
 
@@ -139,7 +139,6 @@ def random_block_mask(
     min_num_masks_per_block: int = 4,
     max_num_masks_per_block: Optional[int] = None,
     max_attempts_per_block: int = 10,
-    seed: Optional[int] = None,
     generator: Optional[torch.Generator] = None,
     device: Optional[Union[torch.device, str]] = None,
 ) -> torch.Tensor:
@@ -151,9 +150,7 @@ def random_block_mask(
         min_image_mask_ratio / max_image_mask_ratio: per-image mask fraction range
         min_num_masks_per_block / max_num_masks_per_block: voxels per block range
         max_attempts_per_block: attempts to find a fitting block
-        seed: optional int seed. If provided, a new torch.Generator with this seed is created.
-        generator: optional torch.Generator (preferred if you already have one). If both
-                   generator and seed are provided, `generator` takes precedence.
+        generator: optional torch.Generator for reproducibility.
         device: device for returned tensor
 
     Returns:
@@ -166,15 +163,6 @@ def random_block_mask(
 
     if max_image_mask_ratio < min_image_mask_ratio:
         raise ValueError("max_image_mask_ratio must be >= min_image_mask_ratio.")
-    
-    if generator is None:
-        generator = torch.Generator()
-        if seed is not None:
-            generator.manual_seed(seed)
-        else:
-            # if user didn't request deterministic seed, use a random seed based on torch.initial_seed()
-            # this keeps behavior similar to torch defaults but still uses a generator.
-            generator.manual_seed(torch.initial_seed() & ((1 << 63) - 1))
 
     num_images_masked = int(B * batch_mask_ratio)
     probs = torch.linspace(min_image_mask_ratio, max_image_mask_ratio, num_images_masked + 1).tolist()
