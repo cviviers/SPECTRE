@@ -13,8 +13,11 @@ import torch
 import torch.nn as nn
 
 from spectre.ssl.models import MaskedVisionTransformer
-from spectre.ssl.heads import DINOProjectionHead, DINOProjectionHead
-from spectre.utils import deactivate_requires_grad_and_to_eval, update_drop_path_rate
+from spectre.ssl.heads import DINOProjectionHead
+from spectre.utils import (
+    deactivate_requires_grad_and_to_eval, 
+    update_drop_path_rate,
+)
 
 
 class DINO(nn.Module):
@@ -25,7 +28,7 @@ class DINO(nn.Module):
         hidden_dim: int = 2048,
         bottleneck_dim: int = 256,
         output_dim: int = 65536,
-        freeze_last_layer: int = 1,
+        freeze_last_layer: int = -1,
     ):
         super().__init__()
 
@@ -40,6 +43,18 @@ class DINO(nn.Module):
         )
         deactivate_requires_grad_and_to_eval(self.backbone_teacher)
         deactivate_requires_grad_and_to_eval(self.head_teacher)
+
+    @torch.no_grad()
+    def forward_teacher(
+        self, 
+        global_views: torch.Tensor
+    ) -> torch.Tensor:
+        
+        # global views
+        teacher_global_cls_token = self.backbone_teacher(global_views).flatten(start_dim=1)
+        teacher_global_cls_out = self.head_teacher(teacher_global_cls_token)
+        
+        return teacher_global_cls_out
 
     def forward_student(
         self,
@@ -59,16 +74,16 @@ class DINO(nn.Module):
 
         return student_cls_out
     
-    def forward_teacher(
+    def forward(
         self, 
-        global_views: torch.Tensor
-    ) -> torch.Tensor:
-        teacher_global_cls_token = self.backbone_teacher(global_views).flatten(start_dim=1)
-        teacher_global_cls_out = self.head_teacher(teacher_global_cls_token)
-        return teacher_global_cls_out
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.teacher_backbone(x)
+        global_views: torch.Tensor,
+        local_views: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        
+        teacher_out = self.forward_teacher(global_views)
+        student_out = self.forward_student(global_views, local_views)
+
+        return teacher_out, student_out
 
 
 class DINOv2(nn.Module):
@@ -81,7 +96,7 @@ class DINOv2(nn.Module):
         output_dim: int = 65536,
         ibot_seperate_head: bool = False,
         student_drop_path_rate: float = 0.1,
-        freeze_last_layer: int = 1,
+        freeze_last_layer: int = -1,
     ):
         super().__init__()
 
@@ -115,6 +130,21 @@ class DINOv2(nn.Module):
             deactivate_requires_grad_and_to_eval(self.head_teacher_ibot)
         else:
             self.head_teacher_ibot = self.head_teacher_dino
+    
+    @torch.no_grad()
+    def forward_teacher(
+        self, 
+        global_views: torch.Tensor,
+        mask: torch.Tensor,
+    ) -> torch.Tensor:
+
+        teacher_features = self.backbone_teacher.encode(global_views, mask=None)
+        teacher_global_cls_token = teacher_features[:, 0]
+
+        teacher_global_cls_out = self.head_teacher_dino(teacher_global_cls_token)
+        teacher_global_masked_out = self.head_teacher_ibot(teacher_features[mask])
+
+        return teacher_global_cls_out, teacher_global_masked_out
 
     def forward_student(
         self, 
@@ -138,20 +168,15 @@ class DINOv2(nn.Module):
         student_cls_out = torch.cat([student_global_cls_out, student_local_cls_out], dim=0)
 
         return student_cls_out, student_global_masked_out
-    
-    def forward_teacher(
-            self, 
-            global_views: torch.Tensor,
-            mask: torch.Tensor,
-        ) -> torch.Tensor:
 
-        teacher_features = self.backbone_teacher.encode(global_views, mask=None)
-        teacher_global_cls_token = teacher_features[:, 0]
+    def forward(
+        self, 
+        global_views: torch.Tensor,
+        local_views: torch.Tensor,
+        mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        
+        teacher_cls_out, teacher_masked_out = self.forward_teacher(global_views, mask)
+        student_cls_out, student_masked_out = self.forward_student(global_views, local_views, mask)
 
-        teacher_global_cls_out = self.head_teacher_dino(teacher_global_cls_token)
-        teacher_global_masked_out = self.head_teacher_ibot(teacher_features[mask])
-
-        return teacher_global_cls_out, teacher_global_masked_out
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.backbone_teacher(x)
+        return teacher_cls_out, teacher_masked_out, student_cls_out, student_masked_out

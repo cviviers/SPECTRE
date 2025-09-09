@@ -57,5 +57,5 @@ model:
   student_temp: 0.1
   center_momentum: 0.9
   freeze_last_layer: 1
-  num_base_patches: 16
+  num_base_patches: 12
   num_local_views: 8

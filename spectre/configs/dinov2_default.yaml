@@ -36,30 +36,34 @@ optim:
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 10
   min_lr: 1.0e-06
+  llrd_factor: 0.9
+  patch_embed_lr_mult: 0.2
+  projection_head_wd_mult: 1.0
   clip_grad_norm: 3.0
   scaling_rule: sqrt_wrt_1024
   adamw_beta1: 0.9
   adamw_beta2: 0.999
+  dino_loss_weight: 1.0
+  koleo_loss_weight: 0.1
+  ibot_loss_weight: 1.0
 model:
   architecture: vit_base_patch16_128
   pretrained_weights: null
   hidden_dim: 2048
   bottleneck_dim: 256
-  output_dim: 65536  # originally 65536, reduced for low-data regime
-  momentum_teacher: 0.992  # originally 0.992, increased for low-data regime
+  output_dim: 65536
+  momentum_teacher: 0.992
   momentum_teacher_end: 1.0
   warmup_teacher_temp: 0.04
   teacher_temp: 0.07
   warmup_teacher_temp_epochs: 30
   student_temp: 0.1
   center_momentum: 0.9
-  mask_ratio_min: 0.2  # originally 0.1, increased for 3D (more neighbors)
-  mask_ratio_max: 0.7  # originally 0.5, increased for 3D (more neighbors)
+  mask_ratio_min: 0.2
+  mask_ratio_max: 0.7
   mask_probability: 0.5
   ibot_seperate_head: true
-  freeze_last_layer: 1  # originally 1, increased for low-data regime
-  student_drop_path_rate: 0.3  # originally 0.3, decreased for low-data regime
+  freeze_last_layer: 1
+  student_drop_path_rate: 0.3
+  num_base_patches: 12
   num_local_views: 8
-  dino_loss_weight: 1.0
-  koleo_loss_weight: 0.1
-  ibot_loss_weight: 1.0

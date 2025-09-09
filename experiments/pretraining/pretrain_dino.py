@@ -4,7 +4,6 @@ import argparse
 from itertools import chain
 from functools import partial
 
-import torch
 import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
@@ -181,6 +180,7 @@ def main(cfg, accelerator: Accelerator):
 
     # Start training
     global_step: int = start_epoch * len(data_loader)
+    t0 = time.time()
     for epoch in range(start_epoch, cfg.optim.epochs):
 
         # Set epoch for shuffling
@@ -188,7 +188,6 @@ def main(cfg, accelerator: Accelerator):
             data_loader.set_epoch(epoch)  # accelerate will call sampler internally
            
         for batch in data_loader:
-            step_start_time = time.time()
             with accelerator.accumulate(model):
 
                 # Update learning rate and weight decay
@@ -226,31 +225,10 @@ def main(cfg, accelerator: Accelerator):
                 local_views = batch["local_views"]
 
                 # Forward pass
-                with torch.no_grad():
-                    teacher_cls_out = unwrapped_model.forward_teacher(
-                        global_views=global_views
-                    )
-                student_cls_out = unwrapped_model.forward_student(
+                teacher_cls_out, student_cls_out = model(
                     global_views=global_views,
-                    local_views=local_views
+                    local_views=local_views,
                 )
-
-                # Debug variables
-                teacher_view_0 = teacher_cls_out.chunk(2, dim=0)[0]
-                teacher_view_0_mean = teacher_view_0.mean().item()
-                teacher_view_0_std = teacher_view_0.std().item()
-
-                student_view_0 = student_cls_out.chunk(2 + cfg.model.num_local_views, dim=0)[0]
-                student_view_0_mean = student_view_0.mean().item()
-                student_view_0_std = student_view_0.std().item()
-
-                teacher_view_0_n = nn.functional.normalize(teacher_view_0, dim=1)
-                sims = torch.matmul(teacher_view_0_n, teacher_view_0_n.t()).flatten()
-                teacher_view_0_sim_mean = sims.mean().item()
-                teacher_view_0_sim_std = sims.std().item()
-
-                center_mean = criterion.center.mean().item()
-                center_std = criterion.center.std().item()
 
                 # Calculate the loss
                 loss = criterion(
@@ -274,10 +252,14 @@ def main(cfg, accelerator: Accelerator):
 
                 unwrapped_model.head_student.cancel_last_layer_gradients(epoch)
                 optimizer.step()
-                
+
+                # Zero gradients
+                optimizer.zero_grad()
+
                 # Log loss, lr, and weight decay
+                step_time = time.time() - t0
+                t0 = time.time()
                 if global_step % cfg.train.log_freq == 0:
-                    step_time = time.time() - step_start_time
                     accelerator.print(
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
@@ -295,14 +277,6 @@ def main(cfg, accelerator: Accelerator):
                             "weight_decay": weight_decay,
                             "momentum": momentum,
                             "step_time": step_time,
-                            "teacher_view_0_mean": teacher_view_0_mean,
-                            "teacher_view_0_std": teacher_view_0_std,
-                            "student_view_0_mean": student_view_0_mean,
-                            "student_view_0_std": student_view_0_std,
-                            "teacher_view_0_sim_mean": teacher_view_0_sim_mean,
-                            "teacher_view_0_sim_std": teacher_view_0_sim_std,
-                            "center_mean": center_mean,
-                            "center_std": center_std,
                         },
                         step=global_step,
                     )
@@ -322,11 +296,9 @@ def main(cfg, accelerator: Accelerator):
                         f"gradients/{n}": v for n, v in gradients.items()
                     }, step=global_step)
                 
-                # Zero gradients
-                optimizer.zero_grad()
-
                 # Update global step
                 global_step += 1
+                
 
         # Save checkpoint
         save_state(

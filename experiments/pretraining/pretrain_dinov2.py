@@ -1,4 +1,5 @@
 import os
+import time
 import argparse
 from itertools import chain
 
@@ -65,6 +66,32 @@ def main(cfg, accelerator: Accelerator):
     # Print config
     accelerator.print(cfg)
 
+    # Get dataloader
+    data_loader = get_dataloader(
+        cfg.train.datasets,
+        cfg.train.data_dir,
+        include_reports=False,
+        include_labels=False,
+        cache_dataset=cfg.train.cache_dataset,
+        cache_dir=cfg.train.cache_dir,
+        use_gds=cfg.train.use_gds,
+        transform=DINOTransform(
+            num_local_views=cfg.model.num_local_views,
+            num_base_patches=cfg.model.num_base_patches,
+            dtype="float16" if cfg.train.load_fp16 else "float32",
+            use_gds=cfg.train.use_gds,
+        ),
+        fraction=cfg.train.data_fraction,
+        batch_size=cfg.train.batch_size_per_gpu,
+        num_workers=cfg.train.num_workers,
+        pin_memory=cfg.train.pin_memory,
+        shuffle=True,
+        collate_fn=extended_collate_dino,
+        drop_last=cfg.train.drop_last,
+        persistent_workers=cfg.train.persistent_workers,
+        use_thread=cfg.train.use_thread,
+    )
+
     # Initialize backbone
     if (
         hasattr(models, cfg.model.architecture)
@@ -82,31 +109,6 @@ def main(cfg, accelerator: Accelerator):
         embed_dim = backbone.embed_dim
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
-
-    # Get dataloader
-    data_loader = get_dataloader(
-        cfg.train.datasets,
-        cfg.train.data_dir,
-        include_reports=False,
-        include_labels=False,
-        cache_dataset=cfg.train.cache_dataset,
-        cache_dir=cfg.train.cache_dir,
-        use_gds=cfg.train.use_gds,
-        transform=DINOTransform(
-            num_local_views=cfg.model.num_local_views,
-            dtype="float16" if cfg.train.load_fp16 else "float32",
-            use_gds=cfg.train.use_gds,
-        ),
-        fraction=cfg.train.data_fraction,
-        batch_size=cfg.train.batch_size_per_gpu,
-        num_workers=cfg.train.num_workers,
-        pin_memory=cfg.train.pin_memory,
-        shuffle=True,
-        collate_fn=extended_collate_dino,
-        drop_last=cfg.train.drop_last,
-        persistent_workers=cfg.train.persistent_workers,
-        use_thread=cfg.train.use_thread,
-    )
 
     # Initialize DINO model
     model = DINOv2(
@@ -182,6 +184,7 @@ def main(cfg, accelerator: Accelerator):
 
     # Start training
     global_step: int = start_epoch * len(data_loader)
+    t0 = time.time()
     for epoch in range(start_epoch, cfg.optim.epochs):
 
         # Set epoch for shuffling
@@ -189,10 +192,9 @@ def main(cfg, accelerator: Accelerator):
             data_loader.set_epoch(epoch)  # accelerate will call sampler internally
            
         for batch in data_loader:
-        
             with accelerator.accumulate(model):
 
-                # Update learning rate
+                # Update learning rate and weight decay
                 lr = cosine_warmup_schedule(
                     global_step,
                     max_steps=total_num_steps,
@@ -201,8 +203,16 @@ def main(cfg, accelerator: Accelerator):
                     warmup_steps=warmup_num_steps,
                     warmup_start_value=0.0,
                 )
+                weight_decay = cosine_schedule(
+                    global_step,
+                    total_num_steps,
+                    cfg.optim.weight_decay,
+                    cfg.optim.weight_decay_end,
+                )
+                
                 for param_group in optimizer.param_groups:
-                    param_group["lr"] = lr
+                    param_group["lr"] = lr * param_group.get("lr_mult", 1.0)
+                    param_group["weight_decay"] = weight_decay * param_group.get("wd_mult", 1.0)
 
                 # Update momentum
                 momentum = cosine_schedule(
@@ -216,17 +226,8 @@ def main(cfg, accelerator: Accelerator):
                 if cfg.model.ibot_seperate_head:
                     update_momentum(unwrapped_model.head_student_ibot, unwrapped_model.head_teacher_ibot, momentum)
 
-                # Update weight decay
-                weight_decay = cosine_schedule(
-                    global_step,
-                    total_num_steps,
-                    cfg.optim.weight_decay,
-                    cfg.optim.weight_decay_end,
-                )
-                optimizer.param_groups[0]["weight_decay"] = weight_decay
-
-                global_views = batch["global_views"].as_tensor()
-                local_views = batch["local_views"].as_tensor()
+                global_views = batch["global_views"]
+                local_views = batch["local_views"]
 
                 # Masking
                 B = global_views.shape[0]
@@ -248,12 +249,7 @@ def main(cfg, accelerator: Accelerator):
                 mask[:, num_prefix_tokens:] = block_mask.flatten(start_dim=1)
 
                 # Forward pass
-                with torch.no_grad():
-                    teacher_cls_out, teacher_masked_out = unwrapped_model.forward_teacher(
-                        global_views=global_views,
-                        mask=mask,
-                    )
-                student_cls_out, student_masked_out = unwrapped_model.forward_student(
+                teacher_cls_out, teacher_masked_out, student_cls_out, student_masked_out = model(
                     global_views=global_views,
                     local_views=local_views,
                     mask=mask,
@@ -282,9 +278,9 @@ def main(cfg, accelerator: Accelerator):
                         student_cls_out.chunk(2 + cfg.model.num_local_views, dim=0)[2:]
                 )
 
-                loss = cfg.model.dino_loss_weight * dino_loss + \
-                    cfg.model.ibot_loss_weight * ibot_loss + \
-                    cfg.model.koleo_loss_weight * koleo_loss
+                loss = cfg.optim.dino_loss_weight * dino_loss + \
+                    cfg.optim.ibot_loss_weight * ibot_loss + \
+                    cfg.optim.koleo_loss_weight * koleo_loss
 
                 # Backward pass
                 accelerator.backward(loss)
@@ -308,19 +304,12 @@ def main(cfg, accelerator: Accelerator):
 
                 optimizer.step()
 
-                # Compute student entropy
-                probs = nn.functional.softmax(student_masked_out, dim=-1)
-                entropy = - (probs * torch.log(probs + 1e-12)).sum(dim=-1).mean().item()
-                top1 = (probs.argmax(dim=-1) == teacher_masked_out.argmax(dim=-1)).float().mean().item()
-
-                # compute cosine similarity between student and teacher cls tokens
-                cos_sim = nn.functional.cosine_similarity(
-                    student_cls_out[:teacher_cls_out.size(0)].detach(), 
-                    teacher_cls_out.detach(), 
-                    dim=-1
-                ).mean().item()
+                # Zero gradients
+                optimizer.zero_grad()
 
                 # Log loss, lr, and weight decay
+                step_time = time.time() - t0
+                t0 = time.time()
                 if global_step % cfg.train.log_freq == 0:
                     accelerator.print(
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
@@ -328,7 +317,8 @@ def main(cfg, accelerator: Accelerator):
                         f"Loss: {loss.item():8f}, "
                         f"LR: {lr:.8f}, "
                         f"Weight Decay: {weight_decay:.8f}, "
-                        f"Momentum: {momentum:.8f}"
+                        f"Momentum: {momentum:.8f}, "
+                        f"Step Time: {step_time:.3f}s"
                     )
                     accelerator.log(
                         {
@@ -340,17 +330,25 @@ def main(cfg, accelerator: Accelerator):
                             "lr": lr,
                             "weight_decay": weight_decay,
                             "momentum": momentum,
-                            "student_mean": student_cls_out.detach().mean().item(),
-                            "student_std": student_cls_out.detach().std(),
-                            "entropy": entropy,
-                            "top1": top1,
-                            "cosine_similarity": cos_sim,
+                            "step_time": step_time,
                         },
                         step=global_step,
                     )
                 
-                # Zero gradients
-                optimizer.zero_grad()
+                if global_step % cfg.train.log_grad_freq == 0:
+                    # Collect gradients
+                    gradients = {}
+                    for n, p in model.named_parameters():
+                        if p.requires_grad:
+                            if p.grad is not None:
+                                gradients[n] = p.grad.abs().mean().item()  # mean absolute grad
+                            else:
+                                gradients[n] = float("nan")  # param has no grad this step
+
+                    # Log gradients to wandb
+                    accelerator.log({
+                        f"gradients/{n}": v for n, v in gradients.items()
+                    }, step=global_step)
 
                 # Update global step
                 global_step += 1
