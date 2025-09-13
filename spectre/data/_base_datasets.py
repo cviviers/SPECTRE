@@ -8,11 +8,16 @@ from copy import deepcopy
 from pathlib import Path
 
 import torch
-import cupy as cp
 import numpy as np
 import monai.data as data
-import kvikio.numpy as kvikio_numpy
 from monai.utils import look_up_option, convert_to_tensor
+
+try:
+    import cupy as cp
+    import kvikio.numpy as kvikio_numpy
+except ImportError:
+    cp = None
+    kvikio_numpy = None
 
 
 SUPPORTED_PICKLE_MOD = {"pickle": pickle}
@@ -150,12 +155,8 @@ class GDSDataset(data.GDSDataset):
                     aux: dict[str, Any] = {}
                     if Path(sidecar_path).is_file():
                         aux = torch.load(sidecar_path, weights_only=False)
-                        item.update(aux)
-                    
-                    # temporary: check if image, image-meta-dict, and aux are present, 
-                    # otherwise recompute and cache again
-                    if all(k in item for k in ["image", "image_meta_dict"]) and aux:
-                        return item
+                        item.update(aux)      
+                    return item
 
                     # return item
                 elif isinstance(item_transformed, (np.ndarray, torch.Tensor)):

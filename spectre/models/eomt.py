@@ -1,4 +1,5 @@
 # Adapted from https://github.com/tue-mps/eomt/
+from __future__ import annotations
 
 import math
 from typing import Optional, Tuple, Union
@@ -7,7 +8,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from spectre.models import VisionTransformer
 from spectre.models.layers import LayerNorm3d
 
 
@@ -58,7 +58,7 @@ def compute_upscale_stages(patch_size, min_size=4):
 class EoMT(nn.Module):
     def __init__(
         self,
-        backbone: VisionTransformer,
+        backbone: "VisionTransformer",
         num_classes: int,
         num_q: int,
         num_blocks=4,

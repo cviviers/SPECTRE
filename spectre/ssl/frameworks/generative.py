@@ -5,11 +5,12 @@ This module provides the necessary components to train the MAE framework an is b
 original paper: He et al., "Masked Autoencoders Are Scalable Vision Learners" (2021), 
 https://arxiv.org/abs/2111.06377
 """
+from __future__ import annotations
+
 import torch.nn as nn
 
-from spectre.models import VisionTransformer
 from spectre.ssl.models import MaskedVisionTransformer, MAEDecoder
-from spectre.utils.models import (
+from spectre.utils.modeling import (
     repeat_token, 
     set_at_index, 
     get_at_index, 
@@ -21,7 +22,7 @@ from spectre.utils.models import (
 class MAE(nn.Module):
     def __init__(
             self,
-            backbone: VisionTransformer,
+            backbone: "VisionTransformer",
             mask_ratio: float = 0.75,
             decoder_dim: int = 512,
             decoder_depth: int = 8,

@@ -1,15 +1,16 @@
-import math
-from typing import Optional, Tuple, List
+from __future__ import annotations
+
+from typing import Optional, Tuple, List, Union
 
 import torch
 import torch.nn as nn
 
-from spectre.models import VisionTransformer
-from spectre.utils.models import (
+from spectre.utils import (
     mask_bool,
     get_at_index, 
     mask_at_index,
     resample_abs_pos_embed,
+    to_3tuple,
 )
 
 
@@ -24,7 +25,7 @@ class MaskedVisionTransformer(nn.Module):
 
     def __init__(
         self,
-        vit: VisionTransformer,
+        vit: "VisionTransformer",
         mask_token: Optional[nn.Parameter] = None,
     ) -> None:
         super().__init__()
@@ -129,14 +130,15 @@ class MaskedVisionTransformer(nn.Module):
         Returns:
             Batch of encoded output tokens.
         """
-        tokens: torch.Tensor = self.preprocess(
+        tokens, rope = self.preprocess(
             images=images, idx_mask=idx_mask, idx_keep=idx_keep, mask=mask
         )
         # normalization layer
         tokens = self.vit.norm_pre(tokens)
+
         # apply Transformer blocks
-        tokens = self.vit.blocks(tokens)
-        # normalize
+        for blk in self.vit.blocks:
+            tokens = blk(tokens, rope=rope)
         tokens = self.vit.norm(tokens)
         return tokens
 
@@ -151,7 +153,8 @@ class MaskedVisionTransformer(nn.Module):
 
         Args:
             images:
-                Tensor with shape (batch_size, channels, image_height, image_width).
+                Tensor with shape (batch_size, channels, image_height, image_width, 
+                image_depth).
             idx_mask:
                 Tensor with shape (batch_size, num_tokens_to_mask) where each
                 entry is an index of the token to mask in the respective batch.
@@ -177,11 +180,13 @@ class MaskedVisionTransformer(nn.Module):
         """
         if idx_mask is not None and mask is not None:
             raise ValueError("idx_mask and mask cannot both be set at the same time.")
+        
+        _, _, H, W, D = images.shape
 
         # convert images to tokens
-        tokens = self.images_to_tokens(images)
+        tokens: torch.Tensor = self.images_to_tokens(images)
         # add prefix tokens if needed
-        tokens = self.prepend_prefix_tokens(tokens)
+        tokens: torch.Tensor = self.prepend_prefix_tokens(tokens)
 
         if idx_mask is not None:
             tokens = mask_at_index(
@@ -193,12 +198,17 @@ class MaskedVisionTransformer(nn.Module):
             )
 
         # add positional encoding
-        tokens = self.add_pos_embed(tokens)
+        tokens, rope = self.add_pos_embed(tokens, img_size=(H, W, D))
 
         if idx_keep is not None:
             tokens = get_at_index(tokens, idx_keep)
+            if rope is not None:
+                if isinstance(rope, list):
+                    rope = [get_at_index(r, idx_keep) for r in rope]
+                else:
+                    rope = get_at_index(rope, idx_keep)
 
-        return tokens
+        return tokens, rope
 
     def images_to_tokens(self, images: torch.Tensor) -> torch.Tensor:
         """Converts images into patch tokens.
@@ -238,59 +248,69 @@ class MaskedVisionTransformer(nn.Module):
             x = torch.cat(prefix_tokens + [x], dim=1)
         return x
 
-    def add_pos_embed(self, x: torch.Tensor) -> torch.Tensor:
+    def add_pos_embed(
+        self, x: torch.Tensor, img_size: Optional[Union[int, Tuple[int, int, int]]] = None,
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor] | None]:
         """Adds positional embeddings to the input tensor based on the Vision Transformer
         (ViT) architecture in vit.
 
         Args:
-            x:
-                Input tensor with shape (batch_size, self.sequence_length, vit.embed_dim).
+            x: Input tensor with shape (batch_size, self.sequence_length, vit.embed_dim).
+            img_size: Image size as an integer or tuple (H, W, D). Only needed if
+            self.vit.dynamic_img_size is True.
 
         Returns:
             Tensor after adding positional embeddings, with the same shape as the input.
+            Rotary positional embeddings (RoPE) if self.vit.rope is not None.
         """
+        if self.vit.pos_embed is None and self.vit.rope is None:
+            return x, None
+        
+        assert img_size is not None or not self.vit.dynamic_img_size
+        
+        if self.vit.pos_embed is not None:
+            if self.vit.dynamic_img_size:
+                H, W, D = to_3tuple(img_size)
+                prev_grid_size = self.vit.patch_embed.grid_size
+                new_size = self.vit.patch_embed.dynamic_feat_size((H, W, D))
+                pos_embed = resample_abs_pos_embed(
+                    self.vit.pos_embed,
+                    new_size=new_size,
+                    old_size=prev_grid_size,
+                    num_prefix_tokens=(
+                        0 if self.vit.no_embed_class else self.vit.num_prefix_tokens
+                    )
+                )
+            else:
+                pos_embed = self.vit.pos_embed
+            
+            if self.vit.no_embed_class:
+                if self.vit.num_prefix_tokens:
+                    prefix = x[:, : self.vit.num_prefix_tokens, :]
+                    spatial = x[:, self.vit.num_prefix_tokens :, :]
+                    spatial = spatial + pos_embed
+                    x = torch.cat((prefix, spatial), dim=1)
+                else:
+                    x = x + pos_embed
+            else:
+                x = x + pos_embed
 
-        x_prefix = x[:, : self.vit.num_prefix_tokens, :]
-        x = x[:, self.vit.num_prefix_tokens :, :]
-        if self.vit.dynamic_img_size:
-            x = x.transpose(1, 2)  # NLC -> NCL
-            batch_size = x.size(0)
-            num_channels = x.size(1)
-            grid_size = round(math.pow(x.size(2), 1 / 3))
-            grid_size = (grid_size, grid_size, grid_size)
-            x = x.view(
-                batch_size,
-                num_channels,
-                grid_size[0],
-                grid_size[1],
-                grid_size[2],
-            )  # NCL -> NCHWD
+            # apply positional dropout (only for learned absolute pos)
+            x = self.vit.pos_drop(x)
 
-            # NCHWD -> NHWDC
-            x = x.permute(0, 2, 3, 4, 1)
-            B, H, W, D, C = x.shape
-            pos_embed = resample_abs_pos_embed(
-                self.vit.pos_embed,
-                (H, W, D),
-                num_prefix_tokens=(
-                    0 if self.vit.no_embed_class else self.vit.num_prefix_tokens
-                ),
-                old_size=self.vit.patch_embed.grid_size,
-            )
-            x = x.view(B, -1, C)
-        else:
-            pos_embed = self.vit.pos_embed
+            return x, None
 
-        if self.vit.no_embed_class:
-            x = x + pos_embed
-            if self.vit.num_prefix_tokens:
-                x = torch.cat((x_prefix, x), dim=1)
-        else:
-            if self.vit.num_prefix_tokens:
-                x = torch.cat((x_prefix, x), dim=1)
-            x = x + pos_embed
-        out: torch.Tensor = self.vit.pos_drop(x)
-        return out
+        else:  # rotary positional embedding
+            B = x.shape[0]
+            H, W, D = to_3tuple(img_size)
+
+            feat_h, feat_w, feat_d = self.vit.patch_embed.dynamic_feat_size((H, W, D))
+            if self.vit.requires_per_sample_rope:
+                rope = [self.vit.rope(H=feat_h, W=feat_w, D=feat_d) for _ in range(B)]
+            else:
+                rope = self.vit.rope(H=feat_h, W=feat_w, D=feat_d)
+
+            return x, rope
 
     def _initialize_weights(self) -> None:
         # Initialize the patch embedding layer like a linear layer instead of conv
@@ -304,10 +324,6 @@ class MaskedVisionTransformer(nn.Module):
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
-
-        # initialize_3d_sine_cosine_positional_embedding(
-        #     pos_embedding=self.vit.pos_embed, has_class_token=self.vit.has_class_token
-        # )
 
     def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
