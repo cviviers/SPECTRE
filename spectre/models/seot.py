@@ -52,6 +52,7 @@ def compute_upscale_stages(patch_size, min_size=4):
     for size in patch_size:
         stages = max(0, int(math.log2(size)) - int(math.log2(min_size)))
         num_stages.append(stages)
+    print(num_stages)
     return num_stages
 
 
@@ -63,13 +64,14 @@ class SEoT(nn.Module):
         # num_q: int,
         num_blocks=4,
         masked_attn_enabled=True,
+        upscale_output=True,
     ):
         super().__init__()
         self.backbone = backbone
         self.num_q = num_classes+1
         self.num_blocks = num_blocks
         self.masked_attn_enabled = masked_attn_enabled
-
+        self.upscale_output = upscale_output
         self.register_buffer("attn_mask_probs", torch.ones(num_blocks))
 
         self.q = nn.Embedding(num_classes+1, self.backbone.embed_dim)
@@ -115,6 +117,14 @@ class SEoT(nn.Module):
         mask_logits = torch.einsum(
             "bqc, bchwd -> bqhwd", self.mask_head(q), self.upscale(x)
         )
+
+        if self.upscale_output:
+            # Upscale to original input size
+            input_size = tuple(
+                self.backbone.patch_embed.patch_size[dim] * self.backbone.patch_embed.grid_size[dim]
+                for dim in range(len(self.backbone.patch_embed.patch_size))
+            )
+            mask_logits = F.interpolate(mask_logits, input_size, mode="trilinear")
 
         return mask_logits
 
@@ -227,7 +237,7 @@ if __name__ == "__main__":
         backbone=vit_base_patch16_128(),
         num_classes=4,
         num_blocks=4,
-        masked_attn_enabled=False,
+        masked_attn_enabled=True,
     )
 
     x = torch.randn(2, 1, 128, 128, 64)
