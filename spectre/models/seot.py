@@ -7,8 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from spectre.models import VisionTransformer
-from spectre.models.layers import LayerNorm3d
+from nnunetv2.SPECTRE.spectre.models import VisionTransformer
+from nnunetv2.SPECTRE.spectre.models.layers import LayerNorm3d
 
 
 class ScaleBlock(nn.Module):
@@ -71,6 +71,7 @@ class SEoT(nn.Module):
         self.num_q = num_classes
         self.num_blocks = num_blocks
         self.masked_attn_enabled = masked_attn_enabled
+        self.deep_supervision = masked_attn_enabled
         self.upscale_output = upscale_output
         self.register_buffer("attn_mask_probs", torch.ones(num_blocks))
         self.for_nnunet = for_nnunet
@@ -104,9 +105,9 @@ class SEoT(nn.Module):
 
         self.upscale = nn.Sequential(*upscale_blocks)
 
-    def _predict(self, x: torch.Tensor):
+    def _predict(self, x: torch.Tensor, stage: int = None):
         q = x[:, : self.num_q, :]
-
+        # print(stage)
         # class_logits = self.class_head(q)
 
         x = x[:, self.num_q + self.backbone.num_prefix_tokens :, :]
@@ -119,16 +120,22 @@ class SEoT(nn.Module):
         )
 
         if self.upscale_output:
-            # Upscale to original input size
-            input_size = tuple(
-                self.backbone.patch_embed.patch_size[dim] * self.backbone.patch_embed.grid_size[dim]
-                for dim in range(len(self.backbone.patch_embed.patch_size))
-            )
+            # Upscale to original input size / stage
+            if stage is not None:
+                input_size = tuple(
+                    int(self.backbone.patch_embed.patch_size[dim] * self.backbone.patch_embed.grid_size[dim] / 2**(stage))
+                    for dim in range(len(self.backbone.patch_embed.patch_size))
+                )
+            else:
+                input_size = tuple(
+                    self.backbone.patch_embed.patch_size[dim] * self.backbone.patch_embed.grid_size[dim]
+                    for dim in range(len(self.backbone.patch_embed.patch_size))
+                )
             mask_logits = F.interpolate(mask_logits, input_size, mode="trilinear")
         
         # if for_nnunet swap depth to third dimension
         if self.for_nnunet:
-            mask_logits = mask_logits.permute(0, 1, 4, 2, 3).squeeze(1)
+            mask_logits = mask_logits.permute(0, 1, 4, 2, 3)
         return mask_logits
 
     @torch.compiler.disable
@@ -174,9 +181,7 @@ class SEoT(nn.Module):
     def forward(self, x: torch.Tensor):
         if self.for_nnunet:
             # swap depth to third dimension
-            x = x.permute(0, 3, 1, 2)
-            x = x[:, None, :, :, :]
-
+            x = x.permute(0, 1, 4, 2, 3)
         x = self.backbone.patch_embed(x)
         x, rope = self.backbone._pos_embed(x)
         x = self.backbone.patch_drop(x)
@@ -194,7 +199,7 @@ class SEoT(nn.Module):
                 self.masked_attn_enabled
                 and i >= len(self.backbone.blocks) - self.num_blocks
             ):
-                mask_logits = self._predict(self.backbone.norm(x))
+                mask_logits = self._predict(self.backbone.norm(x), len(self.backbone.blocks) -i )
                 mask_logits_per_layer.append(mask_logits)
 
                 attn_mask = torch.ones(
@@ -232,12 +237,14 @@ class SEoT(nn.Module):
 
         mask_logits = self._predict(self.backbone.norm(x))
         mask_logits_per_layer.append(mask_logits)
-
+        if self.for_nnunet:
+            # return in reversed order for deep supervision
+            mask_logits_per_layer = mask_logits_per_layer[::-1]
         return mask_logits_per_layer
     
 
 if __name__ == "__main__":
-    from spectre.models import vit_base_patch16_128
+    from nnunetv2.SPECTRE.spectre.models import vit_base_patch16_128
 
     model = SEoT(
         backbone=vit_base_patch16_128(pos_embed='rope',
@@ -247,11 +254,11 @@ if __name__ == "__main__":
             },),
         num_classes=4,
         num_blocks=4,
-        masked_attn_enabled=False,
+        masked_attn_enabled=True,
         for_nnunet=True,
     )
 
-    x = torch.randn(2, 64, 128, 128)
+    x = torch.randn(2, 1, 64, 128, 128)
     # x = torch.randn(2, 1, 128, 128, 64)
     out = model(x)
     for o in out:

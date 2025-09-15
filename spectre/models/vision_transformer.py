@@ -9,12 +9,12 @@ import torch.nn as nn
 from timm.layers import PatchDropout, AttentionPoolLatent
 from timm.models.vision_transformer import LayerScale, DropPath, Mlp
 
-from spectre.models.layers import (
+from nnunetv2.SPECTRE.spectre.models.layers import (
     PatchEmbed, 
     Attention, 
     RotaryPositionEmbedding,
 )
-from spectre.utils import (
+from nnunetv2.SPECTRE.spectre.utils import (
     resample_abs_pos_embed, 
     feature_take_indices, 
     global_pool_nlc,
