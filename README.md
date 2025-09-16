@@ -10,8 +10,7 @@ This repository provides pretrained SPECTRE models together with tools for fine-
 
 | Model Name                | Modality           | Pretraining Objective   | Model Weights     |
 |---------------------------|--------------------|-------------------------|-------------------|
-| SPECTRE                   | CT                 | DINOv3 + SigLIP         | Link              |
-|---------------------------|--------------------|-------------------------|-------------------|
+| **SPECTRE**               | **CT**             | **DINOv3 + SigLIP**     | **Link**          |
 | SPECTRE-ViT-Local         | CT (crops)         | DINOv3                  | Link              |
 | SPECTRE-ViT-Local         | CT (crops)         | DINOv3 + SigLIP         | Link              |
 | SPECTRE-ViT-Global        | CT                 | DINOv3 + SigLIP         | Link              |
