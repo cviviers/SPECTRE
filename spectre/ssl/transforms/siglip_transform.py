@@ -11,6 +11,7 @@ from monai.transforms import (
     ResizeWithPadOrCropd,
     EnsureTyped,
     RandSpatialCropd,
+    GridPatchd,
     SelectItemsd,
 )
 
@@ -22,6 +23,7 @@ class SigLIPTransform(Compose):
         self,
         image_size: Tuple[int, int, int] = (384, 384, 256),
         image_pixdim: Tuple[float, float, float] = (0.75, 0.75, 1.5),
+        sliding_window_size: Tuple[int, int, int] = (128, 128, 64),
         max_shift: Tuple[int, int, int] = (64, 64, 32),
         max_num_icd10: int = 20,
         keep_original_prob: float = 0.5,
@@ -71,6 +73,11 @@ class SigLIPTransform(Compose):
                 keys=("image",),
                 roi_size=image_size,
                 random_size=False,
+            ),
+            GridPatchd(
+                keys=("image",), 
+                patch_size=sliding_window_size, 
+                overlap=0.0, 
             ),
             RandomReportTransformd(
                 keys=("findings", "impressions", "icd10"), 
