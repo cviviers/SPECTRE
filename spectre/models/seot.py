@@ -65,13 +65,14 @@ class SEoT(nn.Module):
         masked_attn_enabled=True,
         upscale_output=True,
         for_nnunet=False,
+        deep_supervision=True,
     ):
         super().__init__()
         self.backbone = backbone
         self.num_q = num_classes
         self.num_blocks = num_blocks
         self.masked_attn_enabled = masked_attn_enabled
-        self.deep_supervision = masked_attn_enabled
+        self.deep_supervision = deep_supervision
         self.upscale_output = upscale_output
         self.register_buffer("attn_mask_probs", torch.ones(num_blocks))
         self.for_nnunet = for_nnunet
@@ -245,7 +246,7 @@ class SEoT(nn.Module):
         if self.for_nnunet:
             # return in reversed order for deep supervision
             mask_logits_per_layer = mask_logits_per_layer[::-1]
-        return mask_logits_per_layer
+        return mask_logits_per_layer if self.deep_supervision else mask_logits
     
 
 if __name__ == "__main__":
@@ -255,16 +256,18 @@ if __name__ == "__main__":
         backbone=vit_base_patch16_128(pos_embed='rope',
             rope_kwargs={
                 "base": 1000.0,  # works for most 3D models
-                "rescale_coords": 2.0,  # s in [0.5, 2.0]
             },),
         num_classes=4,
         num_blocks=4,
         masked_attn_enabled=True,
         for_nnunet=True,
+        deep_supervision=False,
+
     )
 
     x = torch.randn(2, 1, 64, 128, 128)
     # x = torch.randn(2, 1, 128, 128, 64)
     out = model(x)
+    print(out.shape)
     for o in out:
         print(o.shape)
