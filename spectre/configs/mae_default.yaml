@@ -12,7 +12,7 @@ train:
   - abdomenct_1k
   data_dir: /data/
   output_dir: .
-  saveckp_freq: 20
+  saveckp_freq: 5
   resume_ckp: true
   seed: 0
   num_workers: 10

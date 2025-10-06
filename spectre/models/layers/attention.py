@@ -1,10 +1,12 @@
-from typing import Type, Optional
+from typing import Type, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.jit import Final
 from timm.layers import use_fused_attn
+
+from spectre.models.layers.rotary_pos_embed import rope_apply
 
 
 class Attention(nn.Module):
@@ -57,8 +59,72 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim, bias=proj_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, N, C = x.shape
+    def apply_rotary_pos_emb(
+        self, 
+        q: torch.Tensor, 
+        k: torch.Tensor, 
+        rope: Tuple[torch.Tensor, torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Apply RoPE to the query and key tensors.
+        Args:
+            q (torch.Tensor): Query tensor of shape (B, num_heads, N, head_dim)
+            k (torch.Tensor): Key tensor of shape (B, num_heads, N, head_dim)
+            rope (Tuple[torch.Tensor, torch.Tensor]): Tuple of (sin, cos) tensors for RoPE application.
+                Sin and cos can be of shape 
+        """
+        
+        # Match dtype to rope for numeric stability
+        q_dtype, k_dtype = q.dtype, k.dtype
+        sin, cos = rope
+
+        if sin.ndim == 2:
+            sin = sin.unsqueeze(0).unsqueeze(0)
+            cos = cos.unsqueeze(0).unsqueeze(0)
+        elif sin.ndim == 3:
+            sin = sin.unsqueeze(1)
+            cos = cos.unsqueeze(1)
+        else:
+            raise ValueError("RoPE sin/cos must be of shape [N, head_dim] or [B, N, head_dim]")
+        
+        rope_dtype = sin.dtype
+
+        q = q.to(dtype=rope_dtype)
+        k = k.to(dtype=rope_dtype)
+
+        N = q.shape[-2]             # total tokens per sample
+        N_spatial = sin.shape[-2]   # number of spatial tokens covered by rope
+        prefix = N - N_spatial      # e.g., [cls] or [reg] tokens at the front
+        assert prefix >= 0, "RoPE sin/cos length exceeds sequence length"
+
+        if prefix > 0:
+            q_prefix = q[:, :, :prefix, :]
+            k_prefix = k[:, :, :prefix, :]
+            q_spatial = q[:, :, prefix:, :]
+            k_spatial = k[:, :, prefix:, :]
+        else:
+            q_prefix = k_prefix = None
+            q_spatial, k_spatial = q, k
+
+        # Apply RoPE on the spatial tail
+        q_spatial = rope_apply(q_spatial, sin, cos)
+        k_spatial = rope_apply(k_spatial, sin, cos)
+
+        # Stitch back
+        if prefix > 0:
+            q = torch.cat((q_prefix, q_spatial), dim=-2)
+            k = torch.cat((k_prefix, k_spatial), dim=-2)
+        else:
+            q, k = q_spatial, k_spatial
+
+        # Cast back to original dtypes
+        q = q.to(dtype=q_dtype)
+        k = k.to(dtype=k_dtype)
+
+        return q, k
+
+    def compute_qkv(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        B, N, _ = x.shape
         if self.mode == "mha":
             q = self.q(x).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
             kv = self.kv(x).reshape(B, N, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
@@ -77,7 +143,17 @@ class Attention(nn.Module):
             q = self.q(q).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
             kv = self.kv(kv).reshape(B, N, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
             k, v = kv.unbind(0)
+        return q, k, v
         
+    def compute_attention(
+        self, 
+        q: torch.Tensor, 
+        k: torch.Tensor, 
+        v: torch.Tensor,
+    ) -> torch.Tensor:
+        B, _, N, _ = q.shape
+        C = self.num_heads * self.head_dim
+
         if self.fused_attn:
             x = F.scaled_dot_product_attention(
                 q, k, v,
@@ -90,7 +166,22 @@ class Attention(nn.Module):
             attn = self.attn_drop(attn)
             x = attn @ v
 
-        x = x.transpose(1, 2).reshape(B, N, C)
+        return x.transpose(1, 2).reshape(B, N, C)
+
+    def forward(
+        self, 
+        x: torch.Tensor, 
+        rope = None,
+    ) -> torch.Tensor:
+
+        q, k, v = self.compute_qkv(x)
+
+        if rope is not None:
+            if isinstance(rope, list):
+                rope = tuple(torch.stack([r[i] for r in rope], dim=0) for i in range(2))
+            q, k = self.apply_rotary_pos_emb(q, k, rope)
+        
+        x = self.compute_attention(q, k, v)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x

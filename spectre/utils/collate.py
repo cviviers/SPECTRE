@@ -1,17 +1,10 @@
-import random
-from typing import List, Callable, Optional, Tuple
+from typing import List, Callable, Optional
 
 import torch
 from monai.data import list_data_collate
 
 
-def extended_collate_dino(
-    samples_list: List, 
-    mask_ratio: Optional[Tuple[float, float]] = None, 
-    mask_probability: Optional[float] = None, 
-    n_tokens: Optional[int] = None, 
-    mask_generator: Optional[Callable] = None,
-) -> dict:
+def extended_collate_dino(samples_list: List) -> dict:
     """
     Applies MONAI's list_data_collate first and then extends it with DINOv2 masking logic.
 
@@ -30,57 +23,22 @@ def extended_collate_dino(
     collated_data = list_data_collate(samples_list)
 
     # Extract crops
-    global_crops = torch.cat(collated_data["global_crops"], dim=0)
-    local_crops = torch.cat(collated_data["local_crops"], dim=0)
+    global_views = torch.cat(collated_data["image_global_views"], dim=0)
+    local_views = torch.cat(collated_data["image_local_views"], dim=0)
 
-    if (
-        mask_ratio is None
-        or mask_probability is None 
-        or n_tokens is None 
-        or mask_generator is None
-    ):
-        return {
-            "global_crops": global_crops,
-            "local_crops": local_crops,
-        }
-    
-    else:
-        # Masking logic (DINOv2 style)
-        B = len(global_crops)
-        N = n_tokens
-        n_samples_masked = int(B * mask_probability)
-
-        probs = torch.linspace(*mask_ratio, n_samples_masked + 1)
-        upperbound: int = 0
-        masks_list = []
-
-        for i in range(n_samples_masked):
-            prob_min, prob_max = probs[i], probs[i + 1]
-            masks_list.append(torch.BoolTensor(mask_generator(int(N * random.uniform(prob_min, prob_max)))))
-            upperbound += int(N * prob_max)
-
-        for _ in range(n_samples_masked, B):
-            masks_list.append(torch.BoolTensor(mask_generator(0)))
-
-        random.shuffle(masks_list)
-        collated_masks = torch.stack(masks_list).flatten(1)
-        mask_indices_list = collated_masks.flatten().nonzero().flatten()
-
-        masks_weight = (1 / collated_masks.sum(-1).clamp(min=1.0)).unsqueeze(-1).expand_as(collated_masks)[collated_masks]
-
-        return {
-            "global_crops": global_crops,
-            "local_crops": local_crops,
-            "masks": collated_masks,
-            "mask_indices": mask_indices_list,
-            "masks_weight": masks_weight,
-            "upperbound": upperbound,
-        }
+    return {
+        "global_views": global_views,
+        "local_views": local_views,
+    }
     
 
 def extended_collate_siglip(
     samples_list: List,
     tokenizer: Optional[Callable] = None,
+    tokenizer_padding: bool = True,
+    tokenizer_truncation: bool = True,
+    tokenizer_max_length: int = 1024,
+    return_filenames: bool = False
 ) -> dict:
     """
     Applies SigLIP collate and then extends it with tokenization logic.
@@ -92,24 +50,54 @@ def extended_collate_siglip(
     Returns:
         A dictionary with collated images and tokenized text.
     """
-    # [B][N][C, H, W, D] --> [B, N, C, H, W, D]
-    collated_data = dict()
-    collated_data["image"] = torch.stack([
-        torch.stack([
-            s["image"] for s in sample
-        ], dim=0) for sample in samples_list
-    ], dim=0)
-    collated_data["report"] = [sample[0]["report"] for sample in samples_list]
+    collated_data = list_data_collate(samples_list)
 
-    tokenizer_output = tokenizer.batch_encode_plus(
-        collated_data["report"], 
-        add_special_tokens=True,
-        padding=True,
-        truncation=True,
-        max_length=1024,
-    )
-    
-    collated_data["input_ids"] = torch.tensor(tokenizer_output["input_ids"])
-    collated_data["attention_mask"] = torch.tensor(tokenizer_output["attention_mask"])
+    if return_filenames:
+        if "image" in collated_data.keys():
+            if (
+                hasattr(samples_list[0]["image"].data, "meta") 
+                and "filename_or_obj" in samples_list[0]["image"].data.meta
+            ):
+                collated_data["filename"] = [s["image"].data.meta["filename_or_obj"] for s in samples_list]
+
+    if tokenizer is not None and "report" in collated_data.keys():
+        tokenizer_output = tokenizer.batch_encode_plus(
+            collated_data["report"], 
+            add_special_tokens=True,
+            padding=tokenizer_padding,
+            truncation=tokenizer_truncation,
+            max_length=tokenizer_max_length,
+        )
+        
+        collated_data["input_ids"] = torch.tensor(tokenizer_output["input_ids"])
+        collated_data["attention_mask"] = torch.tensor(tokenizer_output["attention_mask"])
 
     return collated_data
+
+
+def extract_patches_non_overlapping(x, patch_size=(128, 128, 64)):
+    """
+    x: (B, C, D, H, W)
+    returns: (B, N, C, patch_d, patch_h, patch_w)
+    where N = (D // patch_d) * (H // patch_h) * (W // patch_w)
+    """
+    B, C, H, W, D = x.shape
+    patch_h, patch_w, patch_d = patch_size
+    assert H % patch_h == 0 and W % patch_w == 0 and D % patch_d == 0, \
+        "Volume must be divisible by patch size for this method."
+    
+    # Reshape into grid
+    x = x.view(
+        B, C,
+        H // patch_h, patch_h,
+        W // patch_w, patch_w,
+        D // patch_d, patch_d,
+    )
+    
+    # Rearrange so patches come together
+    x = x.permute(0, 2, 4, 6, 1, 3, 5, 7)  # (B, H_blocks, W_blocks, D_blocks, C, patch_h, patch_w, patch_d)
+
+    # Merge block indices into one dimension
+    N = (H // patch_h) * (W // patch_w) * (D // patch_d)
+    x = x.contiguous().view(B, N, C, patch_h, patch_w, patch_d)
+    return x

@@ -5,6 +5,30 @@ import numpy as np
 import torch
 
 
+def linear_warmup_schedule(
+    step: int,
+    warmup_steps: int,
+    start_value: float,
+    end_value: float,
+) -> float:
+    if warmup_steps < 0:
+        raise ValueError(f"Warmup steps {warmup_steps} can't be negative.")
+    if step < 0:
+        raise ValueError(f"Current step number {step} can't be negative.")
+    if start_value < 0:
+        raise ValueError(f"Start value {start_value} can't be negative.")
+    if end_value <= 0:
+        raise ValueError(f"End value {end_value} can't be non-positive.")
+    if start_value > end_value:
+        raise ValueError(
+            f"Start value {start_value} must be less than or equal to end value {end_value}."
+        )
+    if step < warmup_steps:
+        return start_value + step / warmup_steps * (end_value - start_value)
+    else:
+        return end_value
+    
+
 def cosine_schedule(
     step: int,
     max_steps: int,
@@ -210,4 +234,54 @@ class CosineWarmupScheduler(torch.optim.lr_scheduler.LambdaLR):
             warmup_end_value=self.warmup_end_value,
             period=self.period,
         )
-    
+
+
+def compute_backbone_lr_multipliers(model, llrd_factor, prefix=("backbone.", )):
+    """
+    Compute LR multipliers for backbone params using Layer-wise LR Decay (LLRD).
+
+    Args:
+        model: nn.Module
+        llrd_factor: decay factor per layer/block
+
+    Returns:
+        dict mapping parameter tensors -> multiplier
+    """
+    lrrd_params = [(n, p) for n, p in model.named_parameters() if any(pfx in n for pfx in prefix)]
+    other_params = [(n, p) for n, p in model.named_parameters() if not any(pfx in n for pfx in prefix)]
+
+    # Walk from last backbone param to first, applying decay on new blocks
+    multiplier = 1.0
+    last_block_idx = None
+    param_to_mult = {}
+
+    for n, p in reversed(lrrd_params):
+        block_idx = None
+        if any(f"{pfx}blocks." in n for pfx in prefix):
+            try:
+                # get the block index from the param name
+                block_idx = None
+                for pfx in prefix:
+                    if f"{pfx}blocks." in n:
+                        block_idx = int(n.split(f"{pfx}blocks.")[1].split(".")[0])
+                        break
+            except ValueError:
+                pass
+
+        if block_idx is not None:
+            if last_block_idx is None:
+                last_block_idx = block_idx
+            elif block_idx < last_block_idx:
+                multiplier *= llrd_factor
+                last_block_idx = block_idx
+
+        # Assign multiplier to this param
+        if p.requires_grad:
+            param_to_mult[n] = multiplier
+
+    # Non-backbone params → multiplier 1.0
+    for n, p in other_params:
+        if p.requires_grad:
+            param_to_mult[n] = 1.0
+
+    return param_to_mult

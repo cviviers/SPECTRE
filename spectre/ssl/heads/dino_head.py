@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 
 class DINOProjectionHead(nn.Module):
-    """Projection head used in DINO.
+    """Projection head used in DINO and DINOv2.
 
     "The projection head consists of a 3-layer multi-layer perceptron (MLP)
     with hidden dimension 2048 followed by l2 normalization and a weight
@@ -15,6 +15,7 @@ class DINOProjectionHead(nn.Module):
 
     - [0]: DINO, 2021, https://arxiv.org/abs/2104.14294
     - [1]: SwAV, 2020, https://arxiv.org/abs/2006.09882
+    - [2]: DINOv2, 2023, https://arxiv.org/abs/2304.07193
 
     Attributes:
         input_dim:
@@ -101,7 +102,7 @@ class DINOProjectionHead(nn.Module):
             nn.init._no_grad_trunc_normal_(
                 module.weight,
                 mean=0,
-                std=0.2,
+                std=0.02,
                 a=-2,
                 b=2,
             )
@@ -112,6 +113,7 @@ class DINOProjectionHead(nn.Module):
         """Computes one forward pass through the head."""
         x = self.layers(x)
         # l2 normalization
-        x = F.normalize(x, dim=-1, p=2)
+        eps = 1e-6 if x.dtype == torch.float16 else 1e-12
+        x = F.normalize(x, dim=-1, p=2, eps=eps)
         x = self.last_layer(x)
         return x
