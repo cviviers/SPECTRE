@@ -261,10 +261,10 @@ class SEoT(nn.Module):
     
 
 if __name__ == "__main__":
-    from nnunetv2.SPECTRE.spectre.models import vit_large_patch16_256
+    from nnunetv2.SPECTRE.spectre.models import vit_large_patch16_256, vit_large_patch16_128
 
     model = SEoT(
-        backbone=vit_large_patch16_256(pos_embed='rope',
+        backbone=vit_large_patch16_128(pos_embed='rope',
             rope_kwargs={
                 "base": 1000.0,  # works for most 3D models
             },),
@@ -272,7 +272,7 @@ if __name__ == "__main__":
         num_blocks=4,
         masked_attn_enabled=True,
         for_nnunet=True,
-        deep_supervision=True,
+        deep_supervision=False,
         upscale_output=True,
     )
     # print number of parameters
@@ -283,7 +283,7 @@ if __name__ == "__main__":
     
     # x = torch.randn(2, 1, 128, 128, 64)
     #x = torch.randn(2, 1, 64, 128, 128)
-    x = torch.randn(2, 1, 64, 256, 256)
+    x = torch.randn(2, 1, 64, 128, 128)
     out = model(x)
     for o in out:
         print(o.shape)
