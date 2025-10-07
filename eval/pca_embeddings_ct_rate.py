@@ -29,8 +29,8 @@ def get_args_parser():
         help="Original image crop size (default: 128, 128, 64)",
     )
     parser.add_argument(
-        "--image_size", type=int, nargs="+", default=(384, 384, 256), 
-        help="Original image size (default: 384 384 256)",
+        "--image_size", type=int, nargs="+", default=(512, 512, 384), 
+        help="Original image size (default: 512 512 384)",
     )
     return parser
 
@@ -41,7 +41,7 @@ def sigmoid(x):
 
 def main(args):
 
-    reconstructions = Path(args.embedding_dir).glob("valid_*")
+    reconstructions = sorted(Path(args.embedding_dir).glob("valid_*"))
 
     for idx_recon, reconstruction in enumerate(reconstructions):
         embed_path = reconstruction / f"{args.embedding_type}.npy"
@@ -160,7 +160,7 @@ def main(args):
             optimize=False,
             disposal=2,  # Background color is replaced by the next frame
         )
-        print(f"Saved PCA gif to {gif_path}")
+        print(f"Saved CT gif to {gif_path}")
 
 
 if __name__ == "__main__":
