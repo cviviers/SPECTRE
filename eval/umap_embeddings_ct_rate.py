@@ -84,6 +84,9 @@ def main(args):
         embeddings[etype] = np.array(embeddings[etype])
         valid_rows[etype] = pd.DataFrame(valid_rows[etype]).reset_index(drop=True)
 
+    print("EMBEDDINGS:\n", embeddings)
+    print("VALID ROWS:\n", valid_rows)
+
     # Fit UMAP to first embeddings
     umap = UMAP(n_neighbors=args.n_neighbors, n_components=2, random_state=42)
     umap = umap.fit(embeddings[args.embedding_types[0]])
