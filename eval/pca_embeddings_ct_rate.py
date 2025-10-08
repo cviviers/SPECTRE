@@ -44,23 +44,23 @@ def main(args):
 
     reconstructions = sorted(Path(args.embedding_dir).glob("valid_*"))
 
-    # Randomly select a subset of reconstructions for PCA fitting
-    random.seed(42)
-    fit_recons = random.sample(reconstructions, min(20, len(reconstructions)))
-    fit_recons = [np.load(recon / f"{args.embedding_type}.npy") for recon in fit_recons]
-    fit_recons = np.concatenate(fit_recons, axis=0)  # Shape: (num_samples, num_tokens, embedding_dim)
-    assert fit_recons.ndim == 3, f"Expected 3D embedding, got {fit_recons.ndim}D"
-    _, num_tokens, embedding_dim = fit_recons.shape
+    # # Randomly select a subset of reconstructions for PCA fitting
+    # random.seed(42)
+    # fit_recons = random.sample(reconstructions, min(20, len(reconstructions)))
+    # fit_recons = [np.load(recon / f"{args.embedding_type}.npy") for recon in fit_recons]
+    # fit_recons = np.concatenate(fit_recons, axis=0)  # Shape: (num_samples, num_tokens, embedding_dim)
+    # assert fit_recons.ndim == 3, f"Expected 3D embedding, got {fit_recons.ndim}D"
+    # _, num_tokens, embedding_dim = fit_recons.shape
 
-    expected_tokens = math.prod(args.reshape_embed_size)
-    assert num_tokens == expected_tokens, \
-        f"Expected {expected_tokens} tokens but got {num_tokens} for reshape size {args.reshape_crop_size}"
+    # expected_tokens = math.prod(args.reshape_embed_size)
+    # assert num_tokens == expected_tokens, \
+    #     f"Expected {expected_tokens} tokens but got {num_tokens} for reshape size {args.reshape_crop_size}"
     
-    flattened_fit = fit_recons.reshape(-1, embedding_dim)  # Shape: (num_samples * num_tokens, embedding_dim)
-    pca = PCA(n_components=3)
-    pca = pca.fit(flattened_fit)  # Fit PCA on the sampled reconstructions
+    # flattened_fit = fit_recons.reshape(-1, embedding_dim)  # Shape: (num_samples * num_tokens, embedding_dim)
+    # pca = PCA(n_components=3)
+    # pca = pca.fit(flattened_fit)  # Fit PCA on the sampled reconstructions
 
-    del fit_recons, flattened_fit  # Free memory
+    # del fit_recons, flattened_fit  # Free memory
 
     for reconstruction in reconstructions:
         embed_path = reconstruction / f"{args.embedding_type}.npy"
@@ -78,6 +78,9 @@ def main(args):
 
         # Flatten all embeddings to fit PCA
         flattened = embeds.reshape(-1, embedding_dim)  # Shape: (num_crops * num_tokens, embedding_dim)
+
+        pca = PCA(n_components=3)
+        pca = pca.fit(flattened)  # Fit PCA on the current reconstruction
         
         flattened_pca = pca.transform(flattened)  # Shape: (num_crops * num_tokens, 3)
 
