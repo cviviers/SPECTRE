@@ -84,6 +84,10 @@ class SigLIP(nn.Module):
                 image_embeddings[:, 0, :],  # class token
                 image_embeddings[:, 1:, :].mean(dim=1)  # mean of patch tokens
             ], dim=1)
+        
+        else:
+            # max pool over crops
+            image_embeddings = image_embeddings.max(dim=1).values  # (batch, embed_dim * 2)
 
         image_embeddings = self.projection_image(image_embeddings)
 
