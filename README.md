@@ -12,12 +12,12 @@ This repository provides pretrained SPECTRE models together with tools for fine-
 
 ## 🧠 Pretrained Models
 
-| Model Name                | Modality           | Pretraining Objective   | Model Weights     |
+| Model Name                | Input Modality     | Pretraining Objective   | Model Weights     |
 |---------------------------|--------------------|-------------------------|-------------------|
 | **SPECTRE**               | **CT**             | **DINOv3 + SigLIP**     | **Link**          |
 | SPECTRE-ViT-Local         | CT (crops)         | DINOv3                  | Link              |
 | SPECTRE-ViT-Local         | CT (crops)         | DINOv3 + SigLIP         | Link              |
-| SPECTRE-ViT-Global        | CT                 | DINOv3 + SigLIP         | Link              |
+| SPECTRE-ViT-Global        | Embedded CT crops  | DINOv3 + SigLIP         | Link              |
 | Qwen3-Embedding-0.6B LoRA | Text (radiology)   | SigLIP                  | Link              |
 
 ## 📂 Repository Contents
