@@ -1,5 +1,4 @@
 import math
-import random
 import argparse
 from pathlib import Path
 
@@ -22,16 +21,8 @@ def get_args_parser():
         help="Which embedding to load (e.g. image_backbone_patch)",
     )
     parser.add_argument(
-        "--reshape_embed_size", type=int, nargs="+", default=(8, 8, 8), 
+        "--patch_grid_size", type=int, nargs="+", default=(8, 8, 8), 
         help="Reshape size for the embeddings (default: 8 8 8)",
-    )
-    parser.add_argument(
-        "--reshape_crop_size", type=int, nargs="+", default=(128, 128, 64),
-        help="Original image crop size (default: 128, 128, 64)",
-    )
-    parser.add_argument(
-        "--image_size", type=int, nargs="+", default=(512, 512, 384), 
-        help="Original image size (default: 512 512 384)",
     )
     return parser
 
@@ -51,12 +42,18 @@ def main(args):
             continue
 
         embeds = np.load(embed_path)
-        assert embeds.ndim == 3, f"Expected 3D embedding, got {embeds.ndim}D for {embed_path}"
-        num_crops, num_tokens, embedding_dim = embeds.shape
+        assert embeds.ndim == 5, f"Expected 5D embedding, got {embeds.ndim}D for {embed_path}"
+        Hp, Wp, Dp, num_tokens, embedding_dim = embeds.shape
 
-        expected_tokens = math.prod(args.reshape_embed_size)
+        expected_tokens = math.prod(args.patch_grid_size)
         assert num_tokens == expected_tokens, \
-            f"Expected {expected_tokens} tokens but got {num_tokens} for reshape size {args.reshape_crop_size}"
+            f"Expected {expected_tokens} tokens but got {num_tokens}"
+        
+        image_path = reconstruction / "image.npy"
+        if not image_path.exists():
+            print(f"Image file {image_path} does not exist. Skipping.")
+            continue
+        img = np.load(image_path)
 
         # Flatten all embeddings to fit PCA
         flattened = embeds.reshape(-1, embedding_dim)  # Shape: (num_crops * num_tokens, embedding_dim)
@@ -69,36 +66,24 @@ def main(args):
         means = flattened_pca.mean(axis=0)
         stds = flattened_pca.std(axis=0)
 
-        # Reshape back to (num_crops, reshape_size..., 3)
-        flattened_pca = flattened_pca.reshape(num_crops, *args.reshape_embed_size, 3)
-
-        #pca_embeds = []
-        #for pca_embedding in flattened_pca:
         normed = (flattened_pca - means) / (stds + 1e-8)
         normed = sigmoid(normed)
         normed = (normed * 255).astype(np.uint8)
-        #pca_embeds.append(normed)
 
-        # Combine patches into a full volume
-        grid_size = tuple(img_sz // crop_sz for img_sz, crop_sz in zip(
-            args.image_size, args.reshape_crop_size))
-        
-        normed = normed.reshape(*grid_size, *args.reshape_embed_size, 3)
+        normed = normed.reshape(Hp, Wp, Dp, *args.patch_grid_size, 3)
         normed = normed.transpose(0, 3, 1, 4, 2, 5, 6)
         normed = normed.reshape(
-            grid_size[0] * args.reshape_embed_size[0],
-            grid_size[1] * args.reshape_embed_size[1],
-            grid_size[2] * args.reshape_embed_size[2],
+            Hp * args.patch_grid_size[0],
+            Wp * args.patch_grid_size[1],
+            Dp * args.patch_grid_size[2],
             3
         )
 
-        #combined_embeds = combine_patches_numpy(pca_embeds, grid_size)
-
         # Resize to image size (D, H, W, C)
         zoom_factors = (
-            args.image_size[0] / normed.shape[0],
-            args.image_size[1] / normed.shape[1],
-            args.image_size[2] / normed.shape[2],
+            img.shape[1] / normed.shape[0],
+            img.shape[2] / normed.shape[1],
+            img.shape[3] / normed.shape[2],
             1,
         )
         combined_embeds = zoom(normed, zoom_factors, order=1)
@@ -106,16 +91,6 @@ def main(args):
         # Reorder from RAS for visualization
         combined_embeds = np.transpose(combined_embeds, (1, 0, 2, 3))
         combined_embeds = np.flip(combined_embeds, axis=(0, 1))
-
-        image_path = reconstruction / "image.npy"
-        if not image_path.exists():
-            print(f"Image file {image_path} does not exist. Skipping.")
-            continue
-
-        img = np.load(image_path)
-        img = img.reshape(*grid_size, *img.shape[1:])
-        img = img.transpose(3, 0, 4, 1, 5, 2, 6)
-        img = img.reshape(1, *args.image_size)
 
         img = np.transpose(img, (2, 1, 3, 0))
         img = np.flip(img, axis=(0, 1))

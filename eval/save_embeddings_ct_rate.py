@@ -13,7 +13,6 @@ from monai.transforms import (
     ScaleIntensityRanged,
     Orientationd,
     Spacingd,
-    ResizeWithPadOrCropd,
     GridPatchd,
 )
 from transformers import (
@@ -25,7 +24,7 @@ from transformers import (
 import spectre.models as models
 from spectre.data import CTRateDataset
 from spectre.ssl.heads import SigLIPProjectionHead
-from spectre.transforms import RandomReportTransformd
+from spectre.transforms import RandomReportTransformd, LargestMultipleCenterCropd
 from spectre.utils import (
     extended_collate_siglip, 
     add_lora_adapters, 
@@ -44,10 +43,6 @@ def get_args_parser():
     parser.add_argument(
         "--save_dir", type=str, default="embeddings", 
         help="Directory to save embeddings",
-    )
-    parser.add_argument(
-        "--image_size", type=int, nargs=3, default=(512, 512, 384), 
-        help="Size of the 3D image (H, W, D)",
     )
     parser.add_argument(
         "--patch_size", type=int, nargs=3, default=(128, 128, 64), 
@@ -159,7 +154,10 @@ def main(args):
         ),
         Orientationd(keys=("image",), axcodes="RAS"),
         Spacingd(keys=("image",), pixdim=(0.5, 0.5, 1.0), mode=("bilinear",)),
-        ResizeWithPadOrCropd(keys=("image",), spatial_size=args.image_size),
+        LargestMultipleCenterCropd(
+            keys=("image",),
+            patch_size=args.patch_size,
+        ),
         GridPatchd(
             keys=("image",),
             patch_size=args.patch_size,
@@ -343,22 +341,31 @@ def main(args):
 
         with torch.no_grad():
             if do_image_backbone:
+
+                loc = batch["image"].data.meta["location"][0]
+                Hp, Wp, Dp = tuple(int(np.unique(loc[i, :]).size) for i in range(3))
+                B, N, C, H, W, D = batch["image"].shape
+
+                assert N == (Hp * Wp * Dp), \
+                    f"Number of patches {N} does not match computed grid size {Hp}x{Wp}x{Dp}"
+
                 # Save the images as numpy arrays
+                images_for_saving = batch["image"].view(B, Hp, Wp, Dp, C, H, W, D)
+                images_for_saving = images_for_saving.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
+                images_for_saving = images_for_saving.view(B, C, Hp * H, Wp * W, Dp * D)
                 save_images(
-                    batch["image"], 
+                    images_for_saving, 
                     [p / "image.npy" for p in save_paths]
                 )
-
-                B, N, C, H, W, D = batch["image"].shape
                 images = batch["image"].view(B*N, C, H, W, D)  # Reshape to (B*N, C, H, W, D)
 
                 image_embeddings = image_backbone(images)
                 save_embeddings(
-                    image_embeddings[:, 0].view(B, N, -1), 
+                    image_embeddings[:, 0].view(B, Hp, Wp, Dp, -1), 
                     [p / "image_backbone_cls.npy" for p in save_paths]
                 )  # Save the CLS token embeddings of shape ()
                 save_embeddings(
-                    image_embeddings[:, 1:].view(B, N, image_embeddings.shape[1] - 1, -1),
+                    image_embeddings[:, 1:].view(B, Hp, Wp, Dp, image_embeddings.shape[1] - 1, -1),
                     [p / "image_backbone_patch.npy" for p in save_paths]
                 )
 
@@ -368,11 +375,7 @@ def main(args):
                         image_embeddings[:, :, 0, :],  # class token
                         image_embeddings[:, :, 1:, :].mean(dim=2)  # mean of patch tokens
                     ], dim=2)  # (batch, crops, embed_dim)
-                    grid_size = tuple(
-                        (args.image_size[i] // args.patch_size[i]) 
-                        for i in range(3)
-                    )  # (H, W, D)
-                    image_embeddings = image_feature_comb(image_embeddings, grid_size=grid_size)
+                    image_embeddings = image_feature_comb(image_embeddings, grid_size=(Hp, Wp, Dp))
                     save_embeddings(
                         image_embeddings[:, 0, :], 
                         [p / "image_feature_comb_cls.npy" for p in save_paths]

@@ -14,7 +14,6 @@ from monai.transforms import (
     ScaleIntensityRanged,
     Orientationd,
     Spacingd,
-    ResizeWithPadOrCropd,
     GridPatchd,
 )
 from transformers import (
@@ -45,10 +44,6 @@ def get_args_parser():
     parser.add_argument(
         "--save_dir", type=str, default="embeddings", 
         help="Directory to save embeddings",
-    )
-    parser.add_argument(
-        "--image_size", type=int, nargs=3, default=(512, 512, 384), 
-        help="Size of the 3D image (H, W, D)",
     )
     parser.add_argument(
         "--patch_size", type=int, nargs=3, default=(128, 128, 64), 
@@ -286,135 +281,6 @@ def split_batch_by_headers(
     return per_example, padded_outputs
 
 
-def compute_grid_and_resampled_size(meta):
-    """
-    Compute patch grid size and scan size after resampling but before padding,
-    using the original affine for accurate spacing.
-
-    Parameters
-    ----------
-    meta : dict
-        Metadata dictionary of MONAI Tensor after transformations.
-
-    Returns
-    -------
-    grid_size : tuple of int
-        Number of patches along (x, y, z)
-    resampled_size : tuple of int
-        Scan size after resampling but before padding
-    """
-    # Compute grid size from patch locations
-    loc = meta['location']
-    grid_size = tuple(np.unique(loc[i, :]).size for i in range(3))
-
-    # Original scan shape
-    orig_shape = meta['dim'][1:4]  # x, y, z
-
-    # Original spacing from original_affine
-    orig_affine = meta['original_affine'][:3, :3]  # 3x3 rotation/scale
-    orig_spacing = np.linalg.norm(orig_affine, axis=0)  # spacing along x, y, z
-
-    # Resampled spacing from current affine
-    affine = meta['affine'][:3, :3]
-    resampled_spacing = np.linalg.norm(affine, axis=0)
-
-    # Compute resampled size
-    resampled_size = tuple(int(np.floor(orig_shape[i] * orig_spacing[i] / resampled_spacing[i]))
-                           for i in range(3))
-
-    return grid_size, resampled_size
-
-
-def compute_grid_and_resampled_size_batch(meta):
-    """
-    Compute patch grid size and scan size after resampling but before padding,
-    using the original affine for accurate spacing. Handles batched metadata.
-
-    Parameters
-    ----------
-    meta : dict
-        Metadata dictionary of MONAI Tensor after transformations.
-        Keys expected (each may be batched or singleton):
-          - 'location' : array-like, either shape (3, N) or (B, 3, N)
-          - 'dim' : array-like, either shape (8,) or (B, 8) (we use indices 1:4)
-          - 'original_affine' : either (4,4) or (B,4,4)
-          - 'affine' : either (4,4) or (B,4,4)
-
-    Returns
-    -------
-    grid_sizes : list of tuple(int,int,int)
-        Number of patches along (x, y, z) for each batch item.
-    resampled_sizes : list of tuple(int,int,int)
-        Scan size after resampling but before padding for each batch item.
-    """
-    # ---- normalize to numpy arrays ----
-    loc_all = np.asarray(meta['location'])
-    dim_all = np.asarray(meta['dim'])
-    orig_aff_all = np.asarray(meta['original_affine'])
-    aff_all = np.asarray(meta['affine'])
-
-    # determine batch size from the location field if possible, else from others
-    if loc_all.ndim == 3:
-        B = loc_all.shape[0]
-    else:
-        B = 1
-
-    # helper to fetch batched-or-singleton value
-    def get_batched(arr, b):
-        arr = np.asarray(arr)
-        if arr.ndim == 0:
-            return arr
-        # if first dim equals batch, return arr[b], else return arr (singleton)
-        if arr.ndim >= 1 and arr.shape[0] == B and B >= 1:
-            return arr[b]
-        return arr
-
-    grid_sizes = []
-    resampled_sizes = []
-
-    for b in range(B):
-        # location: expect shape (3, N)
-        loc = get_batched(loc_all, b)
-        loc = np.asarray(loc)
-        if loc.ndim != 2 or loc.shape[0] < 3:
-            raise ValueError(f"location for batch {b} must be shape (3, N), got {loc.shape}")
-
-        # grid size = number of unique start positions per axis (x,y,z)
-        grid_size = tuple(int(np.unique(loc[i, :]).size) for i in range(3))
-
-        # original shape (use entries 1:4)
-        dim = get_batched(dim_all, b)
-        dim = np.asarray(dim)
-        if dim.size < 4:
-            raise ValueError(f"dim for batch {b} must contain at least 4 entries, got {dim}")
-        orig_shape = np.asarray(dim[1:4], dtype=float)  # x,y,z
-
-        # original spacing from original_affine (use norm of first 3 cols)
-        orig_aff = get_batched(orig_aff_all, b)
-        orig_aff = np.asarray(orig_aff)
-        if orig_aff.shape != (4, 4) and orig_aff.shape[:2] != (4, 4):
-            raise ValueError(f"original_affine for batch {b} must be (4,4) or (B,4,4); got {orig_aff.shape}")
-        orig_aff_3 = orig_aff[:3, :3]
-        orig_spacing = np.linalg.norm(orig_aff_3, axis=0)
-
-        # resampled spacing from current affine
-        aff = get_batched(aff_all, b)
-        aff = np.asarray(aff)
-        if aff.shape != (4, 4) and aff.shape[:2] != (4, 4):
-            raise ValueError(f"affine for batch {b} must be (4,4) or (B,4,4); got {aff.shape}")
-        aff_3 = aff[:3, :3]
-        resampled_spacing = np.linalg.norm(aff_3, axis=0)
-
-        # compute resampled size (conservative: floor as you used)
-        resampled_size = tuple(int(np.floor(orig_shape[i] * orig_spacing[i] / resampled_spacing[i]))
-                               for i in range(3))
-
-        grid_sizes.append(grid_size)
-        resampled_sizes.append(resampled_size)
-
-    return grid_sizes, resampled_sizes
-
-
 def main(args):
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -451,7 +317,6 @@ def main(args):
             keys=("image",),
             patch_size=args.patch_size,
         ),
-    # ResizeWithPadOrCropd(keys=("image",), spatial_size=args.image_size),
         GridPatchd(
             keys=("image",),
             patch_size=args.patch_size,
@@ -636,11 +501,10 @@ def main(args):
         with torch.no_grad():
             if do_image_backbone:
 
-                grid_sizes, _ = compute_grid_and_resampled_size_batch(
-                    batch["image"].data.meta
-                )
+                loc = batch["image"].data.meta["location"][0]
+                Hp, Wp, Dp = tuple(int(np.unique(loc[i, :]).size) for i in range(3))
                 B, N, C, H, W, D = batch["image"].shape
-                Hp, Wp, Dp = grid_sizes[0]  # Assuming all batch items have the same grid size
+
                 assert N == (Hp * Wp * Dp), \
                     f"Number of patches {N} does not match computed grid size {Hp}x{Wp}x{Dp}"
 
@@ -670,10 +534,6 @@ def main(args):
                         image_embeddings[:, :, 0, :],  # class token
                         image_embeddings[:, :, 1:, :].mean(dim=2)  # mean of patch tokens
                     ], dim=2)  # (batch, crops, embed_dim)
-                    # grid_size = tuple(
-                    #     (args.image_size[i] // args.patch_size[i]) 
-                    #     for i in range(3)
-                    # )  # (H, W, D)
                     image_embeddings = image_feature_comb(image_embeddings, grid_size=(Hp, Wp, Dp))
                     save_embeddings(
                         image_embeddings[:, 0, :], 
