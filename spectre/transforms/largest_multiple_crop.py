@@ -2,52 +2,7 @@ from typing import Sequence
 
 import numpy as np
 from monai.config import KeysCollection
-from monai.utils import TraceKeys, LazyAttr
-from monai.data.meta_tensor import MetaTensor
-from monai.data.meta_obj import get_track_meta
 from monai.transforms import Cropd, CenterSpatialCrop
-
-
-class _DynamicCenterSpatialCrop(CenterSpatialCrop):
-    """
-    Runtime cropper for channel-first arrays only.
-
-    Expects input arrays of shape (C, H, W, ...) where the number of spatial dims
-    equals len(patch_size). Computes the largest centered crop whose spatial sizes are
-    multiples of `patch_size` and <= original spatial size (per axis). If an axis is
-    smaller than the patch dimension (multiple == 0) that axis is left unchanged.
-    """
-    def __init__(self, patch_size: Sequence[int], lazy: bool = False) -> None:
-        super().__init__(roi_size=patch_size, lazy=lazy)
-        self.patch_size = np.asarray(patch_size, dtype=int)
-        if self.patch_size.ndim != 1:
-            raise ValueError("patch_size must be a 1D sequence like (128,128,64)")
-
-    def __call__(self, img, lazy: bool | None = None):
-        lazy_ = self.lazy if lazy is None else lazy
-        arr = np.asarray(img)
-
-        n_spatial = self.patch_size.size
-        expected_ndim = n_spatial + 1
-
-        # Enforce channel-first only
-        if arr.ndim != expected_ndim:
-            raise ValueError(
-                f"Expected channel-first array with ndim == {expected_ndim} "
-                f"(C + {n_spatial} spatial dims). Got ndim {arr.ndim}."
-            )
-
-        spatial = np.array(arr.shape[1:], dtype=int)
-
-        multiples = spatial // self.patch_size
-        crop_size = (multiples * self.patch_size).astype(int)
-
-        # If axis smaller than patch (multiple == 0) keep original axis size
-        crop_size = np.where(crop_size == 0, spatial, crop_size)
-        crop_size = tuple(int(x) for x in crop_size)
-
-        temp_cropper = CenterSpatialCrop(roi_size=crop_size, lazy=lazy_)
-        return temp_cropper(arr)
 
 
 class LargestMultipleCenterCropd(Cropd):
@@ -67,42 +22,28 @@ class LargestMultipleCenterCropd(Cropd):
         allow_missing_keys: bool = False,
         lazy: bool = False,
     ) -> None:
-        cropper = _DynamicCenterSpatialCrop(patch_size=patch_size, lazy=lazy)
+        self.patch_size = patch_size
+        cropper = CenterSpatialCrop(roi_size=patch_size, lazy=lazy)  # Placeholder, will be reset per image
         super().__init__(keys, cropper=cropper, allow_missing_keys=allow_missing_keys, lazy=lazy)
     
+    def compute_largest_multiple_crop(self, img: np.ndarray) -> np.ndarray:
+        
+        spatial_dims = img.shape[1:]  # Exclude channel dim
+        patch_size = np.asarray(self.patch_size, dtype=int)
+        multiples = np.array(spatial_dims) // patch_size
+        crop_size = (multiples * patch_size).astype(int)
+        # If axis smaller than patch (multiple == 0) keep original axis size
+        crop_size = np.where(crop_size == 0, spatial_dims, crop_size)
+        return tuple(int(x) for x in crop_size)
+
     def __call__(self, data: dict, lazy: bool | None = None) -> dict:
-        lazy_ = self.lazy if lazy is None else lazy
         d = dict(data)
+        lazy_ = self.lazy if lazy is None else lazy
 
-        for key in self.keys:
-            if key not in d and self.allow_missing_keys:
-                continue
+        for key in self.key_iterator(d):
 
-            ret = self.cropper(d[key], lazy=lazy_)
-            d[key] = ret
-
-            if get_track_meta():
-                ret_: MetaTensor = ret  # type: ignore
-                if not lazy_:
-                    # materialized: grab the last applied operation and push a single transform record
-                    crop_info = ret_.applied_operations.pop()
-                    orig_size = crop_info.get(TraceKeys.ORIG_SIZE)
-                    # push a combined transform record (here only crop_info; consistent structure)
-                    self.push_transform(ret_, orig_size=orig_size, extra_info={"crop_info": crop_info}, lazy=lazy_)
-                else:
-                    # lazy: grab pending operation instead
-                    crop_info = ret_.pending_operations.pop()
-                    orig_size = crop_info.get(TraceKeys.ORIG_SIZE)
-                    # include shape/affine if present (keeps consistent structure)
-                    sp_size = crop_info.get(LazyAttr.SHAPE)
-                    affine = crop_info.get(LazyAttr.AFFINE)
-                    self.push_transform(
-                        ret_,
-                        orig_size=orig_size,
-                        sp_size=sp_size,
-                        affine=affine,
-                        extra_info={"crop_info": crop_info},
-                        lazy=lazy_,
-                    )
-
+            # reset cropper based on current image shape
+            self.cropper.roi_size = self.compute_largest_multiple_crop(d[key].cpu().numpy())
+            d[key] = self.cropper(d[key], lazy=lazy_)  # type: ignore
+            
         return d
