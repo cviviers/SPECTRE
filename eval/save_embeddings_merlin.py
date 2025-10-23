@@ -113,11 +113,11 @@ def get_args_parser():
     )
 
     parser.add_argument(
-        "--batch_size", type=int, default=4, 
+        "--batch_size", type=int, default=1, 
         help="Batch size for the dataloader",
     )
     parser.add_argument(
-        "--num_workers", type=int, default=4, 
+        "--num_workers", type=int, default=10, 
         help="Number of workers for the dataloader",
     )
     return parser
