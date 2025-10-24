@@ -12,7 +12,7 @@ accelerate
 omegaconf
 transformers
 tokenizers
-FlagEmbedding[finetune]
+# FlagEmbedding[finetune]
 peft
 loralib
 matplotlib
