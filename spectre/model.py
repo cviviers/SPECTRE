@@ -28,6 +28,7 @@ MODEL_CONFIGS = {
         "backbone": "vit_large_patch16_128",
         "backbone_checkpoint_path_or_url": "https://huggingface.co/cclaess/SPECTRE/blob/main/spectre_backbone_vit_large_patch16_128.pt",
         "backbone_kwargs": {
+            "num_classes": 0,
             "global_pool": '',
             "pos_embed": "rope",
             "rope_kwargs": {"base": 1000.0},
@@ -36,6 +37,7 @@ MODEL_CONFIGS = {
         "feature_combiner": "feat_vit_large",
         "feature_combiner_checkpoint_path_or_url": "https://huggingface.co/cclaess/SPECTRE/blob/main/spectre_combiner_feature_vit_large.pt",
         "feature_combiner_kwargs": {
+            "num_classes": 0,
             "global_pool": '',
             "pos_embed": "rope",
             "rope_kwargs": {"base": 100.0},
