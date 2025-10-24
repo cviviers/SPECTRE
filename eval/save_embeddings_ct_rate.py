@@ -338,6 +338,29 @@ def main(args):
         filenames = [Path(f).name.split(".")[0] for f in batch["filename"]]
         save_paths = [save_dir / filename for filename in filenames]
 
+        # Check if all embeddings already exist for this batch
+        all_exist = True
+        for p in save_paths:
+            if not p.joinpath("image.npy").exists():
+                all_exist = False
+            if do_image_backbone:
+                if not p.joinpath("image_backbone_cls.npy").exists() or not p.joinpath("image_backbone_patch.npy").exists():
+                    all_exist = False
+                if do_image_feature_comb:
+                    if not p.joinpath("image_feature_comb_cls.npy").exists() or not p.joinpath("image_feature_comb_patch.npy").exists():
+                        all_exist = False
+                    if do_image_projection:
+                        if not p.joinpath("image_projection.npy").exists():
+                            all_exist = False
+            if do_text_backbone:
+                if not p.joinpath("text_backbone.npy").exists():
+                    all_exist = False
+                if do_text_projection:
+                    if not p.joinpath("text_projection.npy").exists():
+                        all_exist = False
+        if all_exist:
+            continue  # Skip this batch
+
 
         with torch.no_grad():
             if do_image_backbone:
