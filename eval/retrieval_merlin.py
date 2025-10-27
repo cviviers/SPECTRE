@@ -30,6 +30,14 @@ def get_args_parser():
         "--ks", type=int, nargs="+", default=[1, 8],
         help="Recall@K cutoffs (space separated), e.g. --ks 5 10 50"
     )
+    parser.add_argument(
+        "--repeats", type=int, default=100,
+        help="Number of times to repeat random non-overlapping pool partitioning (bootstrap repeats)"
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42,
+        help="Random seed for reproducibility of pool partitioning"
+    )
     return parser
 
 
@@ -51,17 +59,20 @@ def load_embeddings(emb_dir: Path, key: str) -> Tuple[np.ndarray, List[str]]:
     return np.vstack(embs), ids
 
 
-def partition_indices(n_samples: int, pool_size: int):
+def partition_indices_from_permutation(perm: np.ndarray, pool_size: int):
     """
-    Generate list of (start, end) index pairs (end exclusive) for non-overlapping pools.
+    Given a 1D array `perm` of shuffled indices, generate list of (start, end, pool_indices)
+    for non-overlapping pools built from perm. end is exclusive, pool_indices = perm[start:end]
     """
     if pool_size <= 0:
         raise ValueError("pool_size must be > 0")
-    idxs = []
-    for start in range(0, n_samples, pool_size):
-        end = min(start + pool_size, n_samples)
-        idxs.append((start, end))
-    return idxs
+    n = perm.shape[0]
+    pools = []
+    for start in range(0, n, pool_size):
+        end = min(start + pool_size, n)
+        pool_indices = perm[start:end]
+        pools.append((start, end, pool_indices))
+    return pools
 
 
 def recall_counts_per_pool(sim_mat: np.ndarray, ks: List[int]) -> dict:
@@ -90,6 +101,36 @@ def recall_counts_per_pool(sim_mat: np.ndarray, ks: List[int]) -> dict:
     return counts
 
 
+def compute_recall_for_partition(txt_embs: np.ndarray, img_embs: np.ndarray, pools, ks: List[int],
+                                 print_pools: bool = False):
+    """
+    Given embeddings and a list of pools (each pool is (start, end, pool_indices)),
+    compute aggregated recall counts and total_queries, and optionally print per-pool recalls.
+    Returns total_counts dict and total_queries.
+    """
+    total_counts = {k: 0 for k in ks}
+    total_queries = 0
+    for pool_idx, (start, end, pool_indices) in enumerate(pools, start=1):
+        pool_size = end - start
+        # aligned selection: both txt and img use the same pool_indices -> ground-truth maps i->i within pool
+        txt_pool = txt_embs[pool_indices]
+        img_pool = img_embs[pool_indices]
+
+        sim = cosine_similarity(txt_pool, img_pool)
+        counts = recall_counts_per_pool(sim, ks)
+
+        for k in ks:
+            total_counts[k] += counts[k]
+        total_queries += pool_size
+
+        if print_pools:
+            pool_recalls = {k: counts[k] / pool_size for k in ks}
+            pool_recalls_str = ", ".join([f"R@{k}={pool_recalls[k]:.4f}" for k in ks])
+            print(f"Pool {pool_idx:3d} indices[{start}:{end}] size={pool_size:3d} -> {pool_recalls_str}")
+
+    return total_counts, total_queries
+
+
 def main(args):
 
     # 1) load embeddings
@@ -102,41 +143,63 @@ def main(args):
 
     # 2) partition into pools
     n_samples = txt_embs.shape[0]
-    pools = partition_indices(n_samples, args.pool_size)
-    print(f"Dataset contains {n_samples} samples -> {len(pools)} pools (pool_size={args.pool_size})")
     ks = sorted(args.ks)
+    repeats = max(1, int(args.repeats))
+    seed = int(args.seed)
 
-    # aggregate counts
-    total_queries = 0
-    total_counts = {k: 0 for k in ks}
+    print(f"Dataset contains {n_samples} samples")
+    print(f"Pool size: {args.pool_size}, ks: {ks}, repeats: {repeats}, seed: {seed}")
 
-    for pool_idx, (start, end) in enumerate(pools, start=1):
-        pool_size = end - start
-        txt_pool = txt_embs[start:end]
-        img_pool = img_embs[start:end]
+    # Prepare RNG
+    rng = np.random.default_rng(seed)
 
-        # similarity: (M, N) where M == N == pool_size
-        sim = cosine_similarity(txt_pool, img_pool)
-        counts = recall_counts_per_pool(sim, ks)
+    # store per-repeat recalls (fraction)
+    recalls_per_repeat = {k: [] for k in ks}
 
-        # accumulate
+    for r in range(repeats):
+        # shuffle indices and partition into non-overlapping pools
+        perm = np.arange(n_samples)
+        rng.shuffle(perm)  # in-place
+        pools = partition_indices_from_permutation(perm, args.pool_size)
+
+        # For readability, only print per-pool breakdown for the first repeat
+        print_pools = (repeats == 1) or (r == 0)
+
+        total_counts, total_queries = compute_recall_for_partition(
+            txt_embs, img_embs, pools, ks, print_pools=print_pools
+        )
+
+        # compute recall fractions for this repeat
+        if total_queries == 0:
+            raise ValueError("No queries found (total_queries == 0)")
+        recalls_this = {k: (total_counts[k] / total_queries) for k in ks}
+
+        print(f"Repeat {r+1:3d}/{repeats:3d} -> " +
+              ", ".join([f"R@{k}={recalls_this[k]:.4f}" for k in ks]))
         for k in ks:
-            total_counts[k] += counts[k]
-        total_queries += pool_size
+            recalls_per_repeat[k].append(recalls_this[k])
 
-        # per-pool recalls (fraction)
-        pool_recalls = {k: counts[k] / pool_size for k in ks}
-        pool_recalls_str = ", ".join([f"R@{k}={pool_recalls[k]:.4f}" for k in ks])
-        print(f"Pool {pool_idx:3d} [{start}:{end}] size={pool_size:3d} -> {pool_recalls_str}")
-
-    # final aggregated recall (weighted by queries)
-    final_recalls = {k: (total_counts[k] / total_queries) if total_queries > 0 else 0.0 for k in ks}
-    print("\n### Aggregated Text→Image Recall@K (pools as candidate sets) ###")
+    # After repeats -> compute mean and 95% percentile CI across repeats
+    print("\n### Aggregated Text→Image Recall@K across repeats ###")
     for k in ks:
-        print(f" Recall@{k:3d}: {final_recalls[k]:.4f}")
+        arr = np.array(recalls_per_repeat[k])
+        mean = arr.mean()
+        if repeats > 1:
+            lower, upper = np.percentile(arr, [2.5, 97.5])
+        else:
+            lower, upper = mean, mean
+        print(f" Recall@{k:3d}: mean={mean:.4f}  95% CI=[{lower:.4f}, {upper:.4f}]  (n_repeats={repeats})")
 
-    # also return results (useful if this function is called programmatically)
-    return final_recalls
+    # also return results programmatically
+    final_stats = {
+        k: {
+            "mean": float(np.mean(recalls_per_repeat[k])),
+            "ci_lower": float(np.percentile(recalls_per_repeat[k], 2.5)) if repeats > 1 else float(np.mean(recalls_per_repeat[k])),
+            "ci_upper": float(np.percentile(recalls_per_repeat[k], 97.5)) if repeats > 1 else float(np.mean(recalls_per_repeat[k])),
+            "values": recalls_per_repeat[k],
+        } for k in ks
+    }
+    return final_stats
 
 
 if __name__ == "__main__":
