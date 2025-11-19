@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from spectre.utils.utils import to_ntuple
+from spectre.utils import to_ntuple
 
 
 def get_padding(kernel_size: int, stride: int, dilation: int = 1) -> int:

@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from timm.models.vision_transformer import Block
 
-from spectre.utils.utils import to_3tuple
+from spectre.utils._utils import to_3tuple
 
 
 class MAEDecoder(nn.Module):

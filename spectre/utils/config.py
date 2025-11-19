@@ -3,7 +3,7 @@ import math
 
 from omegaconf import OmegaConf
 
-from spectre.utils import distributed, utils
+from spectre.utils import _utils, distributed
 
 
 def apply_scaling_rules_to_cfg(cfg):
@@ -58,7 +58,7 @@ def random_seed(args):
     seed = getattr(args, "seed", 0)
     rank = distributed.get_global_rank()
 
-    utils.fix_random_seeds(seed + rank)
+    _utils.fix_random_seeds(seed + rank)
 
 
 def setup(args, default_config):

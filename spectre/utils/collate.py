@@ -73,31 +73,3 @@ def extended_collate_siglip(
         collated_data["attention_mask"] = torch.tensor(tokenizer_output["attention_mask"])
 
     return collated_data
-
-
-def extract_patches_non_overlapping(x, patch_size=(128, 128, 64)):
-    """
-    x: (B, C, D, H, W)
-    returns: (B, N, C, patch_d, patch_h, patch_w)
-    where N = (D // patch_d) * (H // patch_h) * (W // patch_w)
-    """
-    B, C, H, W, D = x.shape
-    patch_h, patch_w, patch_d = patch_size
-    assert H % patch_h == 0 and W % patch_w == 0 and D % patch_d == 0, \
-        "Volume must be divisible by patch size for this method."
-    
-    # Reshape into grid
-    x = x.view(
-        B, C,
-        H // patch_h, patch_h,
-        W // patch_w, patch_w,
-        D // patch_d, patch_d,
-    )
-    
-    # Rearrange so patches come together
-    x = x.permute(0, 2, 4, 6, 1, 3, 5, 7)  # (B, H_blocks, W_blocks, D_blocks, C, patch_h, patch_w, patch_d)
-
-    # Merge block indices into one dimension
-    N = (H // patch_h) * (W // patch_w) * (D // patch_d)
-    x = x.contiguous().view(B, N, C, patch_h, patch_w, patch_d)
-    return x
