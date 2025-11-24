@@ -1,7 +1,7 @@
 # SPECTRE - Self-Supervised & Cross-Modal Pretraining for CT Representation Extraction  
 
 <p align="center">
-   <img src="imgs/cover_image.jpg" alt="SPECTRE cover image" width="600"/>
+   <img src="imgs/method_overview.jpg" alt="SPECTRE architecture and pretraining strategies" width="600"/>
 </p>
 
 SPECTRE is a **Transformer-based foundation model for 3D Computed Tomography (CT) scans**, trained using **self-supervised learning** (SSL) and **cross-modal vision–language alignment** (VLA). It provides rich and generalizable representations from medical imaging data, which can be fine-tuned for downstream tasks such as segmentation, classification, and anomaly detection.  
@@ -108,3 +108,7 @@ If you use SPECTRE in your research or wish to cite it, please use the following
 
 ## 🤝 Acknowledgements
 This project builds upon prior work in self-supervised learning, medical imaging, and transformer-based representation learning. We especially acknowledge the [**timm**](https://timm.fast.ai/) & [**lightly**](https://docs.lightly.ai/self-supervised-learning/) Python libraries for providing 2D PyTorch models (timm) and object-oriented self-supervised learning methods (lightly), from which we adapted parts of the code for 3D.
+
+<p align="center">
+   <img src="imgs/cover_image.jpg" alt="SPECTRE cover image" width="600"/>
+</p>
