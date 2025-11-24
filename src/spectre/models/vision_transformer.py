@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 from timm.layers import PatchDropout, AttentionPoolLatent
 from timm.models.vision_transformer import LayerScale, DropPath, Mlp
+from huggingface_hub import hf_hub_download, load_state_dict_from_file
 
 from spectre.models.layers import (
     PatchEmbed, 
@@ -537,8 +538,26 @@ class VisionTransformer(nn.Module):
                 return parsed.scheme in ('http', 'https')
             except Exception:
                 return False
+            
+        def _is_hf_url(path: str) -> bool:
+            try:
+                parsed = urlparse(str(path))
+                return 'huggingface.co' in parsed.netloc
+            except Exception:
+                return False
 
-        if _is_url(checkpoint_path_or_url):
+        if _is_hf_url(checkpoint_path_or_url):
+            if verbose:
+                print(f"Downloading pretrained weights from Hugging Face URL: {checkpoint_path_or_url}")
+            # Extract repo_id and filename from the URL
+            parsed = urlparse(checkpoint_path_or_url)
+            parts = parsed.path.strip('/').split('/')
+            repo_id = '/'.join(parts[:2])  # e.g., 'cclaess/SPECTRE'
+            filename = parts[-1]           # e.g., 'spectre_backbone_vit_large_patch16_128.pt'
+
+            local_path = hf_hub_download(repo_id=repo_id, filename=filename)
+            state_dict = load_state_dict_from_file(local_path, map_location='cpu')
+        elif _is_url(checkpoint_path_or_url):
             if verbose:
                 print(f"Downloading pretrained weights from URL: {checkpoint_path_or_url}")
             state_dict = torch.hub.load_state_dict_from_url(

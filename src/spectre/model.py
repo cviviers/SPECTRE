@@ -4,7 +4,7 @@ import torch.nn as nn
 
 MODEL_CONFIGS = {
     "spectre-small": {
-        "name": "spectre-small-distilled",
+        "name": "spectre-small",
         "backbone": "vit_small_patch16_128",
         "backbone_checkpoint_path_or_url": None,
         "backbone_kwargs": {},
@@ -12,9 +12,9 @@ MODEL_CONFIGS = {
         "feature_combiner_checkpoint_path_or_url": None,
         "feature_combiner_kwargs": {},
         "description": "SPECTRE model with ViT-Small backbone and feature combiner.",
-    },  # Distilled checkpoints will be added later
+    },  # Pretrained/Distilled checkpoints will be added later
     "spectre-base": {
-        "name": "spectre-base-distilled",
+        "name": "spectre-base",
         "backbone": "vit_base_patch16_128",
         "backbone_checkpoint_path_or_url": None,
         "backbone_kwargs": {},
@@ -22,7 +22,7 @@ MODEL_CONFIGS = {
         "feature_combiner_checkpoint_path_or_url": None,
         "feature_combiner_kwargs": {},
         "description": "SPECTRE model with ViT-Base backbone and feature combiner.",
-    },  # Distilled checkpoints will be added later
+    },  # Pretrained/Distilled checkpoints will be added later
     "spectre-large": {
         "name": "spectre-large",
         "backbone": "vit_large_patch16_128",
@@ -36,7 +36,7 @@ MODEL_CONFIGS = {
     "spectre-large-pretrained": {
         "name": "spectre-large-pretrained",
         "backbone": "vit_large_patch16_128",
-        "backbone_checkpoint_path_or_url": "https://huggingface.co/cclaess/SPECTRE/blob/main/spectre_backbone_vit_large_patch16_128.pt",
+        "backbone_checkpoint_path_or_url": "https://huggingface.co/cclaess/SPECTRE/resolve/main/spectre_backbone_vit_large_patch16_128.pt?download=true",
         "backbone_kwargs": {
             "num_classes": 0,
             "global_pool": '',
@@ -45,7 +45,7 @@ MODEL_CONFIGS = {
             "init_values": 1.0,
         },
         "feature_combiner": "feat_vit_large",
-        "feature_combiner_checkpoint_path_or_url": "https://huggingface.co/cclaess/SPECTRE/blob/main/spectre_combiner_feature_vit_large.pt",
+        "feature_combiner_checkpoint_path_or_url": "https://huggingface.co/cclaess/SPECTRE/resolve/main/spectre_combiner_feature_vit_large.pt?download=true",
         "feature_combiner_kwargs": {
             "num_classes": 0,
             "global_pool": '',
