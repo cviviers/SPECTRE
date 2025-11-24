@@ -1,4 +1,4 @@
-# **SPECTRE** - **S**elf-Supervised & Cross-Modal **P**r**e**training for **CT** **R**epresentation **E**xtraction  
+# SPECTRE - Self-Supervised & Cross-Modal Pretraining for CT Representation Extraction  
 
 <p align="center">
    <img src="imgs/cover_image.png" alt="SPECTRE cover image" width="800"/>
@@ -22,9 +22,10 @@ model = SpectreImageFeatureExtractor.from_config(config)
 model.eval()
 
 # Dummy input: (batch, crops, channels, height, width, depth)
+# For a (3 x 3 x 4) grid of (128 x 128 x 64) CT patches -> Total scan size (384 x 384 x 256)
 x = torch.randn(1, 36, 1, 128, 128, 64)
 with torch.no_grad():
-    features = model(x)
+    features = model(x, grid_size=(3, 3, 4))
 print("Features shape:", features.shape)
 ```
 
@@ -89,7 +90,7 @@ docker run --gpus all --rm -v "$(pwd):/mnt" spectre python3 experiments/pretrain
 
 ## License
 - Code: MIT License — see `LICENSE` (permissive; commercial use permitted).
-- Pretrained model weights: CC-BY-NC-SA — non-commercial share-alike. The weights and any derivative models that include these weights are NOT cleared for commercial use. See `MODELS_LICENSE.md` for details and the precise license text.
+- Pretrained model weights: CC-BY-NC-SA — non-commercial share-alike. The weights and any derivative models that include these weights are NOT cleared for commercial use. See `LICENSE_MODELS.md` for details and the precise license text.
 
 > Note: the pretrained weights are subject to the original dataset licenses. Users intending to use SPECTRE in clinical or commercial settings should verify dataset and model licensing and obtain any required permissions.
 
