@@ -99,12 +99,6 @@ def main(cfg, accelerator: Accelerator):
             checkpoint_path_or_url=cfg.model.pretrained_weights,
             num_classes=0,
             dynamic_img_size=True,
-            pos_embed="rope",
-            rope_kwargs={
-                "base": 1000.0,  # works for most 3D models
-                "rescale_coords": 2.0,  # s in [0.5, 2.0]
-            },
-            init_values=cfg.model.layer_scale_init_value,
         )
         embed_dim = backbone.embed_dim
     elif (
