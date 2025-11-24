@@ -58,7 +58,7 @@ This repository is organized as follows:
 To get up and running with SPECTRE, simply install our package using pip:
 
 ```bash
-pip install spectre
+pip install spectre-fm
 ```
 
 or install the latest updates directly from GitHub:
@@ -76,7 +76,7 @@ First, ensure you have **Docker** installed. Then, clone and navigate to the rep
 ```bash
 git clone https://github.com/cclaess/SPECTRE
 cd SPECTRE
-docker build -t spectre .
+docker build -t spectre-fm .
 ```
 
 ### **Running Experiments Inside Docker**

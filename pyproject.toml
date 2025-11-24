@@ -3,10 +3,11 @@ requires = ["setuptools>=61.0", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "spectre"
+name = "spectre-fm"
 description = "SPECTRE: cross-modal self-supervised pretraining for CT representation extraction"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.8"
+dynamic = ["version"]
 
 authors = [
 	{ name = "Cris Claessens", email = "c.h.b.claessens@tue.nl" },
