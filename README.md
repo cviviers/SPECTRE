@@ -82,7 +82,7 @@ docker build -t spectre-fm .
 ### **Running Experiments Inside Docker**
 Once the image is built, you can start a container and execute scripts inside it. For example, to run a DINO pretraining experiment:
 ```bash
-docker run --gpus all --rm -v "$(pwd):/mnt" spectre python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir /mnt/outputs/pretraining/dino/
+docker run --gpus all --rm -v "$(pwd):/mnt" spectre-fm python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir /mnt/outputs/pretraining/dino/
 ```
 - `--gpus all` enables GPU acceleration if available.
 - `--rm` removes the container after execution.
@@ -90,12 +90,12 @@ docker run --gpus all --rm -v "$(pwd):/mnt" spectre python3 experiments/pretrain
 
 ## License
 - Code: MIT License — see `LICENSE` (permissive; commercial use permitted).
-- Pretrained model weights: CC-BY-NC-SA — non-commercial share-alike. The weights and any derivative models that include these weights are NOT cleared for commercial use. See `LICENSE_MODELS.md` for details and the precise license text.
+- Pretrained model weights: CC-BY-NC-SA — non-commercial share-alike. The weights and any derivative models that include these weights are NOT cleared for commercial use. See `LICENSE_MODELS` for details and the precise license text.
 
-> Note: the pretrained weights are subject to the original dataset licenses. Users intending to use SPECTRE in clinical or commercial settings should verify dataset and model licensing and obtain any required permissions.
+> Note: the pretrained weights are subject to the original dataset licenses. Users intending to use SPECTRE in commercial settings should verify dataset and model licensing and obtain any required permissions.
 
 ## 📜 Citation
-If you use SPECTRE in your research or wish to cite it, please use the following BibTeX entry of our preprint:
+If you use SPECTRE in your research or wish to cite it, please use the following BibTeX entry of our [preprint](https://arxiv.org/abs/2511.17209):
 ```
 @misc{claessens_scaling_2025,
   title = {Scaling {Self}-{Supervised} and {Cross}-{Modal} {Pretraining} for {Volumetric} {CT} {Transformers}},
@@ -107,7 +107,7 @@ If you use SPECTRE in your research or wish to cite it, please use the following
 ```
 
 ## 🤝 Acknowledgements
-This project builds upon prior work in self-supervised learning, medical imaging, and transformer-based representation learning. We especially acknowledge the [**timm**](https://timm.fast.ai/) & [**lightly**](https://docs.lightly.ai/self-supervised-learning/) Python libraries for providing 2D PyTorch models (timm) and object-oriented self-supervised learning methods (lightly), from which we adapted parts of the code for 3D.
+This project builds upon prior work in self-supervised learning, medical imaging, and transformer-based representation learning. We especially acknowledge [**MONAI**](https://project-monai.github.io/) for their awesome framework and the [**timm**](https://timm.fast.ai/) & [**lightly**](https://docs.lightly.ai/self-supervised-learning/) Python libraries for providing 2D PyTorch models (timm) and object-oriented self-supervised learning methods (lightly), from which we adapted parts of the code for 3D.
 
 <p align="center">
    <img src="imgs/cover_image.jpg" alt="SPECTRE cover image" width="600"/>
