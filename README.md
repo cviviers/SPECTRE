@@ -88,9 +88,9 @@ docker run --gpus all --rm -v "$(pwd):/mnt" spectre-fm python3 experiments/pretr
 - `--rm` removes the container after execution.
 - `-v $(pwd):/mnt` mounts the current directory inside the container.
 
-## License
-- Code: MIT License — see `LICENSE` (permissive; commercial use permitted).
-- Pretrained model weights: CC-BY-NC-SA — non-commercial share-alike. The weights and any derivative models that include these weights are NOT cleared for commercial use. See `LICENSE_MODELS` for details and the precise license text.
+## ⚖️ License
+- **Code: MIT** — see `LICENSE` (permissive; commercial use permitted).
+- **Pretrained model weights: CC-BY-NC-SA** — non-commercial share-alike. The weights and any derivative models that include these weights are NOT cleared for commercial use. See `LICENSE_MODELS` for details and the precise license text.
 
 > Note: the pretrained weights are subject to the original dataset licenses. Users intending to use SPECTRE in commercial settings should verify dataset and model licensing and obtain any required permissions.
 
