@@ -230,8 +230,16 @@ class LearnablePixelwiseAnisoJBU3D(nn.Module):
 
 
 if __name__ == "__main__":
+    import argparse
 
+    import numpy as np
+    import nibabel as nib
     import monai.transforms as transforms
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--image_path", type=str, required=True)
+    parser.add_argument("--mask_path", type=str, required=True)
+    args = parser.parse_args()
 
     transform = transforms.Compose([
         transforms.LoadImaged(keys=("image", "mask")),
@@ -242,8 +250,8 @@ if __name__ == "__main__":
         transforms.Resized(keys=("mask_low_res"), spatial_size=(16, 16, 8), mode="nearest")
     ])
     sample = transform({
-        "image": r"E:\kits23\dataset\case_00000\imaging.nii.gz",
-        "mask": r"E:\kits23\dataset\case_00000\segmentation.nii.gz",
+        "image": args.image_path,
+        "mask": args.mask_path,
     })[0]
 
     mask_out = UPA(
@@ -253,8 +261,13 @@ if __name__ == "__main__":
         use_amp=False,
     )
 
-    import numpy as np
-    import nibabel as nib
+    nib.save(
+        nib.Nifti1Image(
+            sample["image"].squeeze(0).cpu().numpy().astype(np.uint8),
+            affine=np.eye(4),
+        ),
+        "image.nii.gz",
+    )
     nib.save(
         nib.Nifti1Image(
             sample["mask"].squeeze(0).cpu().numpy().astype(np.uint8),
