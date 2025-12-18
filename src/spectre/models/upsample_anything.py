@@ -5,19 +5,21 @@ import torch.nn.functional as F
 from torch.optim.lr_scheduler import LambdaLR
 
 
-def UPA(hr_volume, lr_volume, device="cuda", use_amp=True):
+def UPA(hr_image, lr_volume, device="cuda", use_amp=True):
     """
-    hr_volume: numpy or torch [C,Hh,Wh,Dh]
+    hr_image: numpy or torch [C,Hh,Wh,Dh]
     lr_volume: torch [1,C,Hl,Wl,Dl]
     """
 
-    hr = torch.as_tensor(hr_volume).unsqueeze(0).float().to(device)
-    lr = lr_volume.to(device)
+    hr = torch.as_tensor(hr_image).unsqueeze(0).float().to(device)
 
     _, _, Hh, Wh, Dh = hr.shape
-    _, _, Hl, Wl, Dl = lr.shape
+    _, _, Hl, Wl, Dl = lr_volume.shape
     scale = Hh // Hl
     assert Wh // Wl == scale and Dh // Dl == scale, "Inconsistent scale factors"
+
+    lr_volume = lr_volume.to(device).float()
+    lr = F.interpolate(hr, scale_factor=1/scale, mode="trilinear", align_corners=False)
 
     model = LearnablePixelwiseAnisoJBU3D(
         Hl, Wl, Dl, scale=scale
@@ -47,7 +49,7 @@ def UPA(hr_volume, lr_volume, device="cuda", use_amp=True):
     model.eval()
     with torch.inference_mode(), \
         torch.amp.autocast(device_type=device, enabled=use_amp, dtype=torch.float16):
-        out = model(lr, hr)
+        out = model(lr_volume, hr)
  
     return out
 
