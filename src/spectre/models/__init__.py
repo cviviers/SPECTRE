@@ -24,6 +24,7 @@ from .resnet import (
     resnext101,
 )
 from .eomt import EoMT
+from .upsample_anything import UPA
 
 __all__ = [
     'VisionTransformer',
@@ -46,4 +47,5 @@ __all__ = [
     'resnext50',
     'resnext101',
     'EoMT',
+    'UPA',
 ]

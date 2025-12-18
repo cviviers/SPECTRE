@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from spectre.ssl.losses._center import center_momentum, CENTER_MODE_TO_FUNCTION
+from spectre.ssl.losses._center import Center
 
 
 class DINOLoss(nn.Module):
@@ -61,17 +61,11 @@ class DINOLoss(nn.Module):
         self.teacher_temp = teacher_temp
         self.student_temp = student_temp
 
-        # TODO(Guarin, 08/24): Refactor this to use the Center module directly once
-        # we do a breaking change.
-        if center_mode not in CENTER_MODE_TO_FUNCTION:
-            raise ValueError(
-                f"Unknown mode '{center_mode}'. Valid modes are "
-                f"{sorted(CENTER_MODE_TO_FUNCTION.keys())}."
-            )
-        self._center_fn = CENTER_MODE_TO_FUNCTION[center_mode]
-        self.center: nn.Parameter
-        self.register_buffer("center", torch.zeros(1, 1, output_dim))
-        self.center_momentum = center_momentum
+        self.center = Center(
+            size=(1, 1, output_dim),
+            mode=center_mode,
+            momentum=center_momentum,
+        )
 
         # comput the warmup teacher temperature internally for backward compatibility
         self.warmup_teacher_temp_epochs = warmup_teacher_temp_epochs
@@ -141,24 +135,6 @@ class DINOLoss(nn.Module):
         loss = loss.sum() / (n_terms * batch_size)
 
         # Update the center used for the teacher output
-        self.update_center(teacher_out_stacked)
+        self.center.update(teacher_out_stacked)
 
         return loss
-
-    @torch.no_grad()
-    def update_center(self, teacher_out: torch.Tensor) -> None:
-        """Moving average update of the center used for the teacher output.
-
-        Args:
-            teacher_out:
-                Tensor with shape (num_views, batch_size, output_dim) containing
-                features from the teacher model.
-        """
-
-        # Calculate the batch center using the specified center function
-        batch_center = self._center_fn(x=teacher_out, dim=(0, 1))
-
-        # Update the center with a moving average
-        self.center.data = center_momentum(
-            center=self.center, batch_center=batch_center, momentum=self.center_momentum
-        )
