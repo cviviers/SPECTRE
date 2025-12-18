@@ -239,6 +239,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_path", type=str, required=True)
     parser.add_argument("--mask_path", type=str, required=True)
+    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--use_amp", action="store_true")
     args = parser.parse_args()
 
     transform = transforms.Compose([
@@ -257,8 +259,8 @@ if __name__ == "__main__":
     mask_out = UPA(
         sample["image"],
         sample["mask_low_res"].unsqueeze(0),
-        device="cpu",
-        use_amp=False,
+        device=args.device,
+        use_amp=args.use_amp,
     )
 
     nib.save(
