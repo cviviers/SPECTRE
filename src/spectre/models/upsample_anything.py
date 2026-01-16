@@ -27,7 +27,7 @@ def UPA(hr_image, lr_volume, device="cuda", use_amp=True):
 
     model.train()
     opt = torch.optim.Adam(model.parameters(), lr=1e-1)
-    max_steps = 1000
+    max_steps = 350
     gamma = (1e-9 / 1e-1) ** (1.0 / max_steps)
     scheduler = LambdaLR(opt, lr_lambda=lambda step: gamma ** step)
     scaler = torch.amp.GradScaler(device=device, enabled=use_amp)
@@ -250,8 +250,8 @@ if __name__ == "__main__":
         transforms.EnsureChannelFirstd(keys=("image", "mask"), channel_dim="no_channel"),
         transforms.ScaleIntensityRanged(
             keys=("image",),
-            a_min=-1000,
-            a_max=1000,
+            a_min=-150,
+            a_max=250,
             b_min=0.0,
             b_max=1.0,
             clip=True,
@@ -264,19 +264,35 @@ if __name__ == "__main__":
             num_samples=1,
         ),
         transforms.CopyItemsd(keys=("mask"), times=1, names=("mask_low_res")),
-        transforms.Resized(keys=("mask_low_res"), spatial_size=(16, 16, 8), mode="nearest")
+        transforms.Resized(keys=("mask_low_res"), spatial_size=(16, 16, 8), mode="nearest", align_corners=False)
     ])
     sample = transform({
         "image": args.image_path,
         "mask": args.mask_path,
     })[0]
 
+    nib.save(
+        nib.Nifti1Image(
+            (F.interpolate(sample["mask_low_res"].unsqueeze(0), size=(128, 128, 64), mode="nearest").squeeze(0).squeeze(0).cpu().numpy().astype(np.uint8)),
+            affine=np.eye(4),
+        ),
+        "mask_low_res_upscaled.nii.gz",
+    )
+
+    sample["mask_low_res"] = F.one_hot(
+        sample["mask_low_res"].long().squeeze(0), num_classes=4,
+    ).permute(3, 0, 1, 2).unsqueeze(0).float()
+
+    print(sample["mask_low_res"].shape)
+
     mask_out = UPA(
         sample["image"],
-        sample["mask_low_res"].unsqueeze(0),
+        sample["mask_low_res"],
         device=args.device,
         use_amp=args.use_amp,
     )
+
+    mask_out = mask_out.argmax(dim=1, keepdim=True)
 
     nib.save(
         nib.Nifti1Image(
